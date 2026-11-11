@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#121110">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Kişisel piyasa takibi">
+<title>GMI Piyasa</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="top" id="ust">
+  <div class="top-row">
+    <div class="brand"><img src="icons/icon-192.png" alt="" class="brand-ic" width="28" height="28"><span>GMI Piyasa</span></div>
+    <button class="icon-btn" id="btn-refresh" aria-label="Verileri yenile" title="Yenile">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4.5h-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-menu" aria-label="Ayarlar ve bildirimler" title="Ayarlar">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z M19.4 13.5l1.6 1.2-1.8 3.1-1.9-.7a7.6 7.6 0 0 1-2.2 1.3l-.3 2h-3.6l-.3-2a7.6 7.6 0 0 1-2.2-1.3l-1.9.7L5 14.7l1.6-1.2a7.7 7.7 0 0 1 0-3L5 9.3l1.8-3.1 1.9.7a7.6 7.6 0 0 1 2.2-1.3l.3-2h3.6l.3 2a7.6 7.6 0 0 1 2.2 1.3l1.9-.7L21 9.3l-1.6 1.2a7.7 7.7 0 0 1 0 3Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  <div class="meta"><span id="m-updated">Yükleniyor…</span><span id="m-session"></span></div>
+</header>
+
+<div class="banner" id="banner" hidden></div>
+
+<main id="main">
+  <section class="view" id="v-piyasa" data-view="piyasa">
+    <p class="lede" id="summary"></p>
+    <p class="note" id="note" hidden></p>
+    <h2 class="h2">Uyarılar</h2>
+    <p class="sub" id="alerts-empty" hidden>Kayıtlı uyarı yok.</p>
+    <ul class="list" id="alerts"></ul>
+    <h2 class="h2">Fiyatlar</h2>
+    <p class="sub">Değişimler bir önceki kapanışa göre: döviz için New York kapanışı (24:00 TSİ), Bitcoin için 03:00 TSİ. Her kartta veri saati ve gecikme türü yazar.</p>
+    <div id="prices"></div>
+  </section>
+
+  <section class="view" id="v-altin" data-view="altin" hidden>
+    <h2 class="h2">Gram altın: teorik ve piyasa</h2>
+    <p class="sub">Teorik gram = ons × USD/TRY ÷ 31,1035. Yüzdeler teorik fiyata göre farktır (alış / satış).</p>
+    <div class="grid" id="gram-cards"></div>
+    <h2 class="h2">Sikkeler ve primler</h2>
+    <p class="sub">Teorik değer = has altın içeriği (brüt ağırlık × 0,9166) × teorik gram.</p>
+    <div class="tw"><table class="tbl" id="coins">
+      <thead><tr><th>Sikke</th><th>Alış</th><th>Satış</th><th>Teorik</th><th>Alış primi</th><th>Satış primi</th><th>Saat</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <h2 class="h2">Ons altın: son fiyat ve seviyeler</h2>
+    <p class="sub">Kesikli çizgiler son tam seansın destek (S, yeşil) ve direnç (R, kırmızı) seviyeleri; koyu çizgi son fiyat. Bir seviyeye dokununca dayanağı görünür.</p>
+    <div class="card ladder" id="ladder" role="img" aria-label="Ons altın son fiyatı ile destek ve direnç seviyeleri"></div>
+    <h3 class="h3">Bu seviyelerin gram karşılığı</h3>
+    <div class="tw"><table class="tbl" id="gram-levels">
+      <thead><tr><th>Seviye</th><th>Ons ($)</th><th>Gram (TL)</th><th>Dayanak</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <p class="sub">Gram = ons seviyesi × son USD/TRY ÷ 31,1035. Vadeli–spot farkı yok sayıldığı için yaklaşıktır.</p>
+  </section>
+
+  <section class="view" id="v-teknik" data-view="teknik" hidden>
+    <h2 class="h2">Teknik görünüm</h2>
+    <p class="sub">Hesaplama: <span id="tech-asof">—</span>. Günlük skor yedi göstergenin oyudur (−7…+7): +3 ve üzeri pozitif, −3 ve altı negatif. Kısa vade skoru 4 saatlik ve 1 saatlik grafiklerden gelir (−6…+6).</p>
+    <div class="tw"><table class="tbl" id="tech">
+      <thead><tr><th>Varlık</th><th>Günlük</th><th>Kısa vade</th><th>RSI</th><th>Destek 1</th><th>Direnç 1</th><th>Trend</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <h2 class="h2">Senaryo eşikleri ve şu anki konum</h2>
+    <p class="sub">Eşikler son tam seanstan: fiyattan en az 0,25 ATR uzaktaki ilk destek ve direnç. Bir senaryonun teyidi için günlük kapanış gerekir; "konum" yalnız son fiyata göredir.</p>
+    <div class="tw"><table class="tbl" id="scen">
+      <thead><tr><th>Varlık</th><th>Konum</th><th>Son fiyat</th><th>Düşüş eşiği</th><th>Yükseliş eşiği</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section class="view" id="v-gundem" data-view="gundem" hidden>
+    <h2 class="h2">Yaklaşan veriler ve olaylar</h2>
+    <p class="sub">Saatler TSİ.</p>
+    <ul class="list" id="calendar"></ul>
+    <h2 class="h2">Öne çıkan gelişmeler</h2>
+    <p class="sub">Etki: (+) yükseliş, (−) düşüş baskısı. "Değerlendirilmedi", yalnız manşet olarak görülen haberlerdir.</p>
+    <ul class="list" id="news"></ul>
+  </section>
+
+  <section class="view" id="v-karne" data-view="karne" hidden>
+    <h2 class="h2">Tahminler ne kadar tuttu?</h2>
+    <p class="sub" id="perf-empty">Henüz değerlendirilmiş tahmin yok. Akşam seansı günün tahminlerini değerlendirdiğinde sonuçlar burada görünür.</p>
+    <div id="perf-body" hidden>
+      <div class="tiles">
+        <div class="card"><div class="pname">Yön isabeti</div><div class="pval" id="p-rate">—</div><div class="pmeta">isabet ÷ (isabet + ıska)</div></div>
+        <div class="card"><div class="pname">Değerlendirilen</div><div class="pval" id="p-n">—</div></div>
+        <div class="card"><div class="pname">İsabet / ıska / yatay</div><div class="pval pval-sm" id="p-split">—</div></div>
+      </div>
+      <h3 class="h3">Son değerlendirmeler</h3>
+      <div class="tw"><table class="tbl" id="perf">
+        <thead><tr><th>Varlık</th><th>Tahmin</th><th>Beklenen yön</th><th>O anki fiyat</th><th>Gerçekleşen</th><th>Değişim</th><th>Sonuç</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <p class="foot">Araştırma ve takip amaçlıdır; yatırım tavsiyesi değildir.</p>
+</main>
+
+<nav class="tabbar" role="tablist" aria-label="Bölümler">
+  <button class="tab" data-tab="piyasa" role="tab" aria-selected="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M7 15l4-4 3 3 5-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Piyasa</span>
+  </button>
+  <button class="tab" data-tab="altin" role="tab" aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span>Altın</span>
+  </button>
+  <button class="tab" data-tab="teknik" role="tab" aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 20V10M12 20V4M18 20v-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Teknik</span>
+  </button>
+  <button class="tab" data-tab="gundem" role="tab" aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 10h16M9 3v4M15 3v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>Gündem</span>
+  </button>
+  <button class="tab" data-tab="karne" role="tab" aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4 4L19 7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Karne</span>
+  </button>
+</nav>
+
+<div class="sheet-backdrop" id="sheet-bg" hidden></div>
+<aside class="sheet" id="sheet" hidden aria-label="Ayarlar">
+  <div class="sheet-head"><strong>Ayarlar</strong><button class="icon-btn" id="btn-close" aria-label="Kapat">✕</button></div>
+
+  <h3 class="h3">Uygulamayı yükle</h3>
+  <p class="sub" id="install-text">Chrome menüsünden (⋮) <b>Uygulamayı yükle</b> ya da <b>Ana ekrana ekle</b> seçeneğine dokunun.</p>
+  <button class="btn" id="btn-install" hidden>Uygulamayı yükle</button>
+
+  <h3 class="h3">Bildirimler</h3>
+  <p class="sub" id="push-status">Bildirim durumu kontrol ediliyor…</p>
+  <div class="btn-row">
+    <button class="btn" id="btn-push">Bildirimleri aç</button>
+    <button class="btn btn-ghost" id="btn-test">Deneme bildirimi</button>
+  </div>
+  <div id="push-box" hidden>
+    <p class="sub">Aşağıdaki kodu kopyalayıp GitHub'da deponuzun <b>Settings → Secrets and variables → Actions</b> bölümüne <b>PUSH_SUBSCRIPTION</b> adıyla kaydedin. Kod yalnız bu telefona bildirim göndermeye yarar.</p>
+    <textarea id="push-code" readonly rows="5"></textarea>
+    <button class="btn" id="btn-copy">Kodu kopyala</button>
+  </div>
+
+  <details class="terms">
+    <summary>Terimler: bu uygulamadaki kavramlar</summary>
+    <dl>
+      <dt>Destek (S) ve direnç (R)</dt><dd>Fiyatın geçmişte durduğu ya da döndüğü seviyeler. S1 en yakın destek, R1 en yakın dirençtir. Kırılım için genellikle günlük kapanış beklenir.</dd>
+      <dt>Günlük skor</dt><dd>Yedi göstergenin "yukarı" (+1) ya da "aşağı" (−1) oyu: 50 ve 200 günlük ortalama, EMA 9/21, MACD, RSI 50, Parabolic SAR ve yön göstergesi (DI).</dd>
+      <dt>Kısa vade skoru</dt><dd>4 saatlik ve 1 saatlik grafiklerde EMA 9/21, MACD ve RSI oyları.</dd>
+      <dt>RSI</dt><dd>0–100 arası hız göstergesi. 70 üzeri aşırı alım, 30 altı aşırı satım bölgesi sayılır.</dd>
+      <dt>ATR</dt><dd>Ortalama günlük fiyat aralığı; bir seviyenin fiyata yakın mı uzak mı olduğunu ölçer.</dd>
+      <dt>Teorik gram altın</dt><dd>Ons fiyatı × USD/TRY ÷ 31,1035. Bir ons 31,1035 gramdır.</dd>
+      <dt>Prim ve makas</dt><dd>Prim, piyasa fiyatının teorik değerden yüzde farkıdır. Makas, alış ile satış arasındaki farktır.</dd>
+      <dt>Vadeli ve spot</dt><dd>Vadeli (COMEX) ileri tarihli sözleşme fiyatıdır; spot anlık teslim fiyatıdır.</dd>
+      <dt>Anlık, gecikmeli, kapanış</dt><dd>Verinin ne kadar taze olduğunu gösterir. Piyasa kapalıysa son işlem fiyatı "kapanış"tır.</dd>
+    </dl>
+  </details>
+
+  <h3 class="h3">Hakkında</h3>
+  <p class="sub">Veriler hafta içi 08:45, 10:33, 12:45, 14:33, 16:38, 20:33 ve 22:15'te (TSİ) zamanlanmış seanslarca güncellenir. Kaynaklar: Yahoo Finance, Harem Altın, doviz.com ve haber kaynakları. Fiyatlar canlı akmaz; her kartta veri saati yazar. Araştırma ve takip amaçlıdır; yatırım tavsiyesi değildir.</p>
+  <p class="sub" id="ver"></p>
+</aside>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
