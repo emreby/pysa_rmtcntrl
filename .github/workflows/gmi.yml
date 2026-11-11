@@ -1,0 +1,65 @@
+name: GMI otomatik
+# Her 15 dakikada fiyat ve eşik kontrolü; 08:45, 12:45, 16:38 ve 22:15'ten sonraki ilk çalışmada tam seans (TSİ, hafta içi).
+on:
+  schedule:
+    - cron: '*/15 * * * 1-5'
+  workflow_dispatch:
+    inputs:
+      mod:
+        description: 'Boş bırakın (otomatik) ya da: kontrol / seans'
+        required: false
+        default: ''
+      seans:
+        description: 'Tam seans için: SABAH / OGLEN / OGLEDEN_SONRA / AKSAM'
+        required: false
+        default: ''
+  push:
+    branches: [main]
+    paths: ['engine/**', '.github/workflows/gmi.yml']
+permissions:
+  contents: write
+concurrency:
+  group: gmi
+  cancel-in-progress: false
+jobs:
+  calis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Çalışma türü
+        id: k
+        run: |
+          set -- $(python3 engine/pipeline.py decide --force "${{ inputs.mod }}" --session "${{ inputs.seans }}")
+          echo "mod=$1" >> "$GITHUB_OUTPUT"; echo "seans=$2" >> "$GITHUB_OUTPUT"; echo "mod=$1 seans=$2"
+      - name: Veri topla
+        run: node engine/collect.mjs ${{ steps.k.outputs.mod }} work
+      - name: Analiz ve uygulama verisi
+        id: analiz
+        if: always() && steps.k.outcome == 'success'
+        run: python3 engine/pipeline.py run ${{ steps.k.outputs.mod }} ${{ steps.k.outputs.seans }}
+      - name: Kaydet
+        id: kaydet
+        if: always() && steps.k.outcome == 'success'
+        run: |
+          git config user.name "GMI otomatik"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data state raporlar
+          if git diff --cached --quiet; then echo "degisti=0" >> "$GITHUB_OUTPUT"; echo "değişiklik yok"; exit 0; fi
+          git commit -q -m "Veri: ${{ steps.k.outputs.mod }} ${{ steps.k.outputs.seans }} $(TZ=Europe/Istanbul date '+%Y-%m-%d %H:%M')"
+          for i in 1 2 3; do git push -q origin HEAD:main && break; git pull -q --rebase origin main; done
+          echo "degisti=1" >> "$GITHUB_OUTPUT"
+      - name: Telefona bildirim
+        if: steps.analiz.outcome == 'success' && steps.kaydet.outputs.degisti == '1'
+        env:
+          PUSH_CONFIG: ${{ secrets.PUSH_CONFIG }}
+          SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+        run: |
+          if [ -z "$PUSH_CONFIG" ]; then echo "PUSH_CONFIG yok; bildirim atlandı"; exit 0; fi
+          npm install --no-save --no-audit --no-fund web-push@3 > /dev/null
+          node scripts/notify.mjs
