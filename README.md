@@ -10,10 +10,8 @@ Kişisel piyasa takip uygulaması: altın, döviz, emtia ve borsalar için fiyat
 ## Kurulum (bir kez)
 1. **Settings → Pages:** Source "Deploy from a branch", Branch `main`, klasör `/ (root)`.
 2. Telefonda Chrome ile `https://emreby.github.io/pysa_rmtcntrl/` adresini açın. Menüden (⋮) **Uygulamayı yükle**'ye dokunun.
-3. Uygulamada ⚙ **Ayarlar → Bildirimleri aç**. Çıkan kodu kopyalayın.
-4. **Settings → Secrets and variables → Actions → New repository secret** bölümünden iki gizli değer ekleyin:
-   - `PUSH_SUBSCRIPTION`: uygulamadaki kod
-   - `VAPID_PRIVATE_KEY`: size ayrıca verilen anahtar
+3. Uygulamada ⚙ **Ayarlar → Bildirimleri aç**, izin verin ve **Kodu kopyala**'ya dokunun. Bildirim anahtarları telefonunuzda üretilir.
+4. **Settings → Secrets and variables → Actions → New repository secret**: ad `PUSH_CONFIG`, değer kopyaladığınız kod.
 5. **Actions → Telefona bildirim → Run workflow** ile deneme bildirimi gönderin.
 
 ## Dosyalar

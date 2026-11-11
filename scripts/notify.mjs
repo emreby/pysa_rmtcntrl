@@ -4,14 +4,12 @@ import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import webpush from 'web-push';
 
-const PUB = process.env.VAPID_PUBLIC_KEY;
-const PRIV = process.env.VAPID_PRIVATE_KEY;
-const SUBS = process.env.PUSH_SUBSCRIPTION;
+const CONF = process.env.PUSH_CONFIG;
 const SITE = process.env.SITE_URL || 'https://github.com/';
 const TEST = String(process.env.TEST_MESSAGE || '').toLowerCase() === 'true';
 
-if (!PUB || !PRIV || !SUBS) {
-  console.log('VAPID_PRIVATE_KEY veya PUSH_SUBSCRIPTION tanımlı değil; bildirim gönderilmedi.');
+if (!CONF) {
+  console.log('PUSH_CONFIG gizli değeri tanımlı değil; bildirim gönderilmedi.');
   process.exit(0);
 }
 
@@ -46,20 +44,23 @@ if (!msgs.length) {
   process.exit(0);
 }
 
-let subs = parse(SUBS);
-if (!subs) {
-  console.log('PUSH_SUBSCRIPTION okunamadı: değer JSON olmalı (uygulamadaki kod aynen yapıştırılmalı).');
+let targets = parse(CONF);
+if (!targets) {
+  console.log('PUSH_CONFIG okunamadı: değer, uygulamadaki kodun aynısı olmalı.');
   process.exit(1);
 }
-if (!Array.isArray(subs)) subs = [subs];
+if (!Array.isArray(targets)) targets = [targets];
 
-webpush.setVapidDetails(SITE, PUB, PRIV);
 let ok = 0;
 let fail = 0;
 for (const m of msgs.slice(0, 4)) {
-  for (const sub of subs) {
+  for (const t of targets) {
     try {
-      await webpush.sendNotification(sub, JSON.stringify(m), { TTL: 6 * 3600, urgency: 'high' });
+      await webpush.sendNotification(t.subscription, JSON.stringify(m), {
+        TTL: 6 * 3600,
+        urgency: 'high',
+        vapidDetails: { subject: SITE, publicKey: t.vapidPublicKey, privateKey: t.vapidPrivateKey },
+      });
       ok += 1;
     } catch (e) {
       fail += 1;

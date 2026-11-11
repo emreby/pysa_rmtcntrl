@@ -23,19 +23,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
       - name: web-push kur
         run: npm install --no-save --no-audit --no-fund web-push@3
       - name: Bildirim gönder
         env:
-          VAPID_PUBLIC_KEY: 'BOcCf9ebaoKSxwsKCd5WIyTjdT-HYcuIrrJOtvUaIvZxA52D6fGv0ZXqTDTP7H4aQ_yC7RRPQokmP3mdBUuwgtE'
-          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
-          PUSH_SUBSCRIPTION: ${{ secrets.PUSH_SUBSCRIPTION }}
+          PUSH_CONFIG: ${{ secrets.PUSH_CONFIG }}
           SITE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
           TEST_MESSAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.deneme }}
         run: node scripts/notify.mjs

@@ -340,26 +340,59 @@
     navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
       if (sub) {
         st.textContent = 'Bildirimler bu telefonda açık. Kodu GitHub\'a kaydettiyseniz uyarılar gelir.';
-        $('push-code').value = JSON.stringify(sub);
-        $('push-box').hidden = false;
+        var v = null;
+        try { v = JSON.parse(localStorage.getItem('gmi-vapid') || 'null'); } catch (_) { v = null; }
+        if (v) showCode(v, sub);
       } else {
         st.textContent = 'Bildirimler kapalı. Açmak için düğmeye dokunun.';
       }
     }).catch(function () { st.textContent = 'Bildirim durumu okunamadı.'; });
   }
+  function u8ToB64u(u8) {
+    var s = '';
+    for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+    return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  // Bildirim anahtarları bu telefonda üretilir; özel anahtar yalnız sizin kopyaladığınız kodda ve GitHub'daki gizli değerde bulunur.
+  function getVapid() {
+    var v = null;
+    try { v = JSON.parse(localStorage.getItem('gmi-vapid') || 'null'); } catch (_) { v = null; }
+    if (v && v.publicKey && v.privateKey) return Promise.resolve(v);
+    return crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']).then(function (kp) {
+      return Promise.all([crypto.subtle.exportKey('raw', kp.publicKey), crypto.subtle.exportKey('jwk', kp.privateKey)]);
+    }).then(function (res) {
+      v = { publicKey: u8ToB64u(new Uint8Array(res[0])), privateKey: res[1].d };
+      try { localStorage.setItem('gmi-vapid', JSON.stringify(v)); } catch (_) {}
+      return v;
+    });
+  }
+  function showCode(v, sub) {
+    $('push-code').value = JSON.stringify({ v: 1, vapidPublicKey: v.publicKey, vapidPrivateKey: v.privateKey, subscription: sub.toJSON ? sub.toJSON() : sub });
+    $('push-box').hidden = false;
+  }
   function enablePush() {
-    if (!pushSupported()) { refreshPushStatus(); return; }
+    if (!pushSupported() || !(window.crypto && crypto.subtle)) { refreshPushStatus(); return; }
+    var vapid = null;
     Notification.requestPermission().then(function (perm) {
       if (perm !== 'granted') { refreshPushStatus(); return null; }
-      return navigator.serviceWorker.ready.then(function (reg) {
+      return getVapid().then(function (v) {
+        vapid = v;
+        return navigator.serviceWorker.ready;
+      }).then(function (reg) {
         return reg.pushManager.getSubscription().then(function (sub) {
-          return sub || reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToU8(CFG.vapidPublicKey) });
+          var key = b64uToU8(vapid.publicKey);
+          if (sub) {
+            var cur = sub.options && sub.options.applicationServerKey ? new Uint8Array(sub.options.applicationServerKey) : null;
+            var same = cur && cur.length === key.length && cur.every(function (b, i) { return b === key[i]; });
+            if (same) return sub;
+            return sub.unsubscribe().then(function () { return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }); });
+          }
+          return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
         });
       });
     }).then(function (sub) {
       if (!sub) return;
-      $('push-code').value = JSON.stringify(sub);
-      $('push-box').hidden = false;
+      showCode(vapid, sub);
       refreshPushStatus();
     }).catch(function (e) { $('push-status').textContent = 'Bildirim açılamadı: ' + (e && e.message ? e.message : e); });
   }
