@@ -9,6 +9,8 @@ Kişisel piyasa takip uygulaması: altın, döviz, emtia, borsalar ve faiz. Ara�
 - **Veri ve analiz telefonda:** Uygulama açılınca fiyatları ve grafik verisini doğrudan telefondan çeker (Yahoo Finance, Truncgil, Google Haberler başlıkları, Forex Factory takvimi). Göstergeler, destek/direnç ve sinyaller telefonda hesaplanır. Bilgisayar gerekmez.
 - **Teknik grafikler:** Mum grafiği, SMA 20/50/200, Bollinger bandı, destek/direnç çizgileri, RSI ve MACD; günlük, 4 saatlik ve 1 saatlik.
 - **Teknik sinyaller:** Göstergelerin oylamasından kurala göre GÜÇLÜ AL / AL / NÖTR / SAT / GÜÇLÜ SAT. Sinyaller kesin yön ya da fiyat hedefi değildir; geçmiş isabetleri Karne sekmesinde tutulur.
+- **Otomatik yorum:** Her varlık için grafik altında sade Türkçe yorum (eğilim, RSI, MACD, ADX, Bollinger, ATR, seviyeler; gram altında ons ve kur payı) ve seçili zaman dilimine göre grafik okuması; Piyasa sekmesinde "Günün yorumu". Yorumlar göstergelerden sabit kurallarla yazılır; tahmin ya da tavsiye değildir.
+- **İller sekmesi:** Kuyumcular odalarının fiyat yayını. Yayımlayan odaların siteleri otomatik veri çekmeyi yasakladığı ya da giriş istediği için fiyatlar uygulamaya alınmaz; resmî sayfa tarayıcıda açılır. Liste `iller.js` içinde.
 - **Arka plan kontrolü:** Uygulama kapalıyken telefon yaklaşık 15 dakikada bir (Android izin verdikçe) fiyatları kontrol eder; eşik aşılırsa ya da son analizin destek/direnç seviyesi kırılırsa bildirim gösterir.
 
 ### Kurulum
@@ -26,6 +28,8 @@ https://emreby.github.io/pysa_rmtcntrl/ — `data/app_data.json` dosyasını oku
 - `index.html`, `app.js`, `app.css`: arayüz
 - `analysis.js`: telefonda veri toplama, teknik analiz ve sinyaller
 - `chart.js`: teknik grafikler
+- `yorum.js`: kural tabanlı yorum motoru
+- `iller.js`: kuyumcular odaları listesi (elle doğrulanır)
 - `engine/ta_engine.js`: gösterge motoru
 - `android/`: Android kabuğu ve arka plan kontrolü (WorkManager)
 - `.github/workflows/android.yml`: APK derleme ve yayınlama

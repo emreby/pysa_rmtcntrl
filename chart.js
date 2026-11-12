@@ -1,5 +1,6 @@
 /* GMI teknik grafik: mum grafiği, hareketli ortalamalar, Bollinger bandı, destek/direnç çizgileri, RSI ve MACD panelleri.
-   Kullanım: GMICHART.render(kutu, { bars, tf: 'G'|'4S'|'1S', span: 0|1|2, dp, unit, name, levels: [{ v, label, kind: 's'|'r' }] }) */
+   Kullanım: GMICHART.render(kutu, { daily, hourly, tf: 'G'|'4S'|'1S', span: 0|1|2, dp, unit, name, levels: [{ v, label, kind: 's'|'r' }] })
+   Dönüş: son mumun göstergeleri (yorum motoru için) ya da veri yoksa null. */
 (function () {
   'use strict';
   var NS = 'http://www.w3.org/2000/svg';
@@ -48,6 +49,16 @@
     return { sma20: sma(c, 20), sma50: sma(c, 50), sma200: sma(c, 200), bb: boll(c, 20, 2), rsi: rsi, macd: md.m, sig: md.s, hist: md.h };
   }
 
+  // Bir ortalamanın kaç mumu ve yaklaşık ne kadar takvim süresini kapsadığı (zaman damgalarından)
+  function periodOf(all, N, tf) {
+    var unit = tf === 'G' ? N + ' gün' : (tf === '4S' ? N + '×4 saat' : N + ' saat');
+    if (!all || all.length <= N) return { txt: unit + ', veri yetmiyor', days: null, ok: false };
+    var d = (all[all.length - 1].t - all[all.length - 1 - N].t) / 86400, ap = '';
+    if (tf === 'G') { if (d >= 45) ap = '≈ ' + num(d / 30.44, d >= 300 ? 0 : 1) + ' ay'; }
+    else if (tf === '4S' || d >= 1.5) ap = d >= 45 ? '≈ ' + num(d / 30.44, 1) + ' ay' : '≈ ' + num(d, d >= 10 ? 0 : 1) + ' gün';
+    return { txt: unit + (ap ? ' ' + ap : ''), days: d, ok: true };
+  }
+
   function seriesFor(o) {
     var E = window.GMI || (typeof GMI !== 'undefined' ? GMI : null);
     if (o.tf === 'G') return o.daily || [];
@@ -62,7 +73,7 @@
     if (!all || all.length < 30) {
       var p = document.createElement('p'); p.className = 'sub';
       p.textContent = o.tf === 'G' ? 'Grafik için yeterli günlük veri yok.' : 'Bu varlık için saatlik veri yok; günlük grafiğe bakın.';
-      box.appendChild(p); return;
+      box.appendChild(p); return null;
     }
     var ind = indicators(all);
     var span = SPANS[o.tf][o.span == null ? 1 : o.span];
@@ -194,13 +205,25 @@
     hit.addEventListener('pointermove', function (e) { if (e.buttons || e.pointerType === 'touch') showAt(e.clientX); });
     resetInfo();
 
+    var P20 = periodOf(all, 20, o.tf), P50 = periodOf(all, 50, o.tf), P200 = periodOf(all, 200, o.tf);
     var legend = document.createElement('div'); legend.className = 'gc-legend';
-    [['gc-k-ma20', 'SMA 20'], ['gc-k-ma50', 'SMA 50'], ['gc-k-ma200', 'SMA 200'], ['gc-k-band', 'Bollinger (20, 2)'], ['gc-k-s', 'destek'], ['gc-k-r', 'direnç']].forEach(function (x) {
+    [['gc-k-ma20', 'SMA 20 (' + P20.txt + ')'], ['gc-k-ma50', 'SMA 50 (' + P50.txt + ')'], ['gc-k-ma200', 'SMA 200 (' + P200.txt + ')'],
+      ['gc-k-band', 'Bollinger (20, 2)'], ['gc-k-s', 'destek'], ['gc-k-r', 'direnç']].forEach(function (x) {
       var sp = document.createElement('span'); var sw = document.createElement('i'); sw.className = x[0]; sp.appendChild(sw); sp.appendChild(document.createTextNode(x[1])); legend.appendChild(sp);
     });
     box.appendChild(info); box.appendChild(svg); box.appendChild(legend);
     box.setAttribute('data-span-label', SPAN_LABEL[o.tf][o.span == null ? 1 : o.span]);
+
+    // yorum için son mumun göstergeleri (seçili zaman diliminde)
+    var L = all.length - 1;
+    return {
+      tf: o.tf, t: all[L].t, c: all[L].c, first: bars[0].c, firstT: bars[0].t, hiV: Math.max.apply(null, bars.map(function (b) { return b.h; })),
+      loV: Math.min.apply(null, bars.map(function (b) { return b.l; })), spanLabel: SPAN_LABEL[o.tf][o.span == null ? 1 : o.span],
+      sma20: ind.sma20[L], sma50: ind.sma50[L], sma200: ind.sma200[L], rsi: ind.rsi[L], rsiPrev: ind.rsi[L - 1],
+      macd: ind.macd[L], sig: ind.sig[L], hist: ind.hist[L], histPrev: ind.hist[L - 1], bbU: ind.bb.u[L], bbL: ind.bb.l[L],
+      per: { 20: P20, 50: P50, 200: P200 }
+    };
   }
 
-  window.GMICHART = { render: render, SPAN_LABEL: SPAN_LABEL };
+  window.GMICHART = { render: render, SPAN_LABEL: SPAN_LABEL, periodOf: periodOf };
 })();

@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var CFG = window.GMI_CONFIG || {};
-  var VERSION = '2.1.0';
+  var VERSION = '2.2.0';
   var NATIVE = window.GMI_NATIVE || null;
   var GA = window.GMIA || null;
   var USE_PHONE = !!(NATIVE && GA);
@@ -11,7 +11,8 @@
   var STRIP = ['GRAM', 'GOLD_FUT', 'SILVER_FUT', 'USDTRY', 'XU100', 'BTC'];
   var chartState = { key: null, tf: 'G', span: 1 };
   var MON = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-  var VIEWS = ['piyasa', 'altin', 'teknik', 'gundem', 'karne'];
+  var VIEWS = ['piyasa', 'altin', 'iller', 'teknik', 'gundem', 'karne'];
+  var YZ = window.GMIYORUM || null;
   var state = { data: null, fetchedAt: 0, offline: false, loading: false, error: null };
   var installEvt = null;
 
@@ -87,7 +88,7 @@
       $('m-updated').textContent = 'Veri alınamadı. İnternet bağlantınızı kontrol edip yenileyin.';
       return;
     }
-    renderHeader(); renderStrip(); renderAlerts(); renderPrices(); renderGold(); renderSignals(); renderTech(); renderAgenda(); renderPerf(); renderBanner();
+    renderHeader(); renderStrip(); renderMarketYorum(); renderAlerts(); renderPrices(); renderGold(); renderIller(); renderSignals(); renderTech(); renderAgenda(); renderPerf(); renderBanner();
   }
 
   function status() { return rows('status')[0] || {}; }
@@ -290,7 +291,9 @@
       var top = el('div', 'sig-top'); top.append(el('span', 'pname', x.name), sigBadge(x.code, x.label));
       var line = el('div', 'sig-line');
       line.append(el('span', 'pval pval-sm', num(x.price, x.dp) + (x.unit ? ' ' + x.unit : '')), el('span', 'pchg ' + dir(x.chg), pct(x.chg)));
-      c.append(top, line, el('div', 'pmeta', 'Günlük skor ' + scoreTxt(x.ds) + '/' + x.dn + ' · kısa vade ' + (x.ss == null ? '—' : scoreTxt(x.ss) + '/' + x.sn) + ' · ' + (x.trend || '')));
+      var sy = YZ ? YZ.short(x) : '';
+      c.append(top, line, el('div', 'pmeta', 'Günlük skor ' + scoreTxt(x.ds) + '/' + x.dn + ' · kısa vade ' + (x.ss == null ? '—' : scoreTxt(x.ss) + '/' + x.sn) + (sy || !x.trend ? '' : ' · ' + x.trend)));
+      if (sy) c.append(el('div', 'sig-yorum', sy));
       if (x.invalid) c.append(el('div', 'pmeta', (x.code === 'NOTR' ? 'Yön için: ' : 'Geçersiz kılan: ') + x.invalid));
       if (x.notes && x.notes.length) c.append(el('div', 'sig-note', x.notes[0]));
       if (x.stale) c.append(el('div', 'sig-note', 'Güncel veri alınamadı; önbellekteki veriyle hesaplandı.'));
@@ -329,32 +332,121 @@
     if (sig) levels = [lvl(sig.s1, 'S1', 's'), lvl(sig.s2, 'S2', 's'), lvl(sig.r1, 'R1', 'r'), lvl(sig.r2, 'R2', 'r')].filter(Boolean);
     else if (t) levels = [['s1', 'S1', 's'], ['s2', 'S2', 's'], ['r1', 'R1', 'r'], ['r2', 'R2', 'r']].map(function (x) { return t[x[0]] != null ? { v: t[x[0]], label: x[1], kind: x[2] } : null; }).filter(Boolean);
     var ser = GA && GA.seriesFor ? GA.seriesFor(key) : null;
-    var box = $('ch-box');
+    var box = $('ch-box'), st = null;
     if (!window.GMICHART || !ser || !ser.d) { clear(box).append(el('p', 'sub', 'Grafikler Android uygulamasında, veriler telefona çekildikten sonra görünür.')); }
-    else GMICHART.render(box, { daily: ser.d, hourly: ser.h, tf: chartState.tf, span: chartState.span, dp: dp, unit: unit, name: name, levels: levels });
+    else st = GMICHART.render(box, { daily: ser.d, hourly: ser.h, tf: chartState.tf, span: chartState.span, dp: dp, unit: unit, name: name, levels: levels });
+    var x = sig || sigLike(key);
+    renderChartRead(st, x || { dp: dp, unit: unit });
+    renderAssetYorum(x);
     renderSigDetail(sig);
+  }
+  // sinyal listesinde olmayan varlıklar için (ör. S&P 500, Nikkei) bellekteki analizden yorum nesnesi
+  function sigLike(key) {
+    var t = GA && GA.techFor ? GA.techFor(key) : null;
+    if (!t) return null;
+    var a = (GA.assets && GA.assets[key]) || {};
+    return { key: key, name: t.name, dp: t.dp, unit: a.unit || '', price: t.price, chg: t.chg, ds: t.ds, dn: t.dn, ss: t.ss, sn: t.sn, rsi: t.rsi, adx: t.adx,
+      trend: t.trend, votes: [], s1: t.msup[0] || null, s2: t.msup[1] || null, r1: t.mres[0] || null, r2: t.mres[1] || null, stale: t.stale, atr: t.atr, ind: t.ind };
+  }
+  function yorumCtx() {
+    var list = rows('signals');
+    return { gold: rows('gold'), find: function (k) { return list.filter(function (r) { return r.key === k; })[0] || null; } };
+  }
+  function renderChartRead(st, x) {
+    var box = clear($('ch-read'));
+    if (!YZ || !st) { box.hidden = true; return; }
+    var lines = YZ.chart(st, x);
+    box.hidden = !lines.length;
+    if (!lines.length) return;
+    box.append(el('h3', 'yorum-h', 'Bu grafikte ne görünüyor?'));
+    var ul = el('ul', 'yorum-list');
+    lines.forEach(function (t) { ul.append(el('li', null, t)); });
+    box.append(ul);
+  }
+  function renderAssetYorum(x) {
+    var box = clear($('ch-yorum'));
+    var y = YZ && x ? YZ.asset(x, yorumCtx()) : null;
+    box.hidden = !y;
+    if (!y) return;
+    box.append(el('h3', 'yorum-h', 'Uygulamanın yorumu (günlük görünüm)'));
+    box.append(el('p', 'yorum-lead', y.lead.join(' ')));
+    y.sections.forEach(function (sec) {
+      box.append(el('h4', 'yorum-sh', sec.h));
+      var ul = el('ul', 'yorum-list');
+      sec.items.forEach(function (t) { ul.append(el('li', null, t)); });
+      box.append(ul);
+    });
+    box.append(el('p', 'sub', 'Bu yorum göstergelerden sabit kurallarla otomatik yazılır; tahmin, kesin yön ya da yatırım tavsiyesi değildir.'));
+  }
+  function renderMarketYorum() {
+    var card = $('market-yorum'), body = clear($('market-yorum-body'));
+    var lines = YZ ? YZ.market(state.data) : [];
+    card.hidden = !lines.length;
+    lines.forEach(function (t) { body.append(el('p', null, t)); });
+  }
+  function openTerms() {
+    closeChart(); openSheet();
+    var d = document.querySelector('#sheet .terms');
+    if (d) { d.open = true; setTimeout(function () { d.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 60); }
   }
   function renderSigDetail(x) {
     var box = clear($('ch-sig'));
     if (!x) return;
     var h = el('div', 'sig-top'); h.append(el('strong', null, 'Teknik sinyal'), sigBadge(x.code, x.label)); box.append(h);
     box.append(el('p', 'sub', 'Günlük skor ' + scoreTxt(x.ds) + '/' + x.dn + ' (yedi göstergenin oyu), kısa vade ' + (x.ss == null ? 'hesaplanamadı' : scoreTxt(x.ss) + '/' + x.sn + ' (4 saat ve 1 saat)') +
-      ' · RSI ' + num(x.rsi, 0) + ' (' + (x.rsiState || '—') + ') · ADX ' + num(x.adx, 0) + ' · ' + (x.trend || '')));
+      (x.trend ? ' · ' + x.trend : '') + '. Göstergelerin oyu:'));
     var ul = el('ul', 'votes');
     (x.votes || []).forEach(function (v) { ul.append(el('li', v.ok ? 'up' : 'down', (v.ok ? '▲ ' : '▼ ') + v.txt)); });
     box.append(ul);
     (x.notes || []).forEach(function (n) { box.append(el('p', 'sig-note', n)); });
-    var lv = [];
-    if (x.s1) lv.push('S1 ' + num(x.s1.v, x.dp) + ' (' + x.s1.labels.join(', ') + ')');
-    if (x.r1) lv.push('R1 ' + num(x.r1.v, x.dp) + ' (' + x.r1.labels.join(', ') + ')');
-    if (lv.length) box.append(el('p', 'sub', 'Anlamlı seviyeler: ' + lv.join(' · ')));
-    if (x.invalid) box.append(el('p', 'sub', (x.code === 'NOTR' ? 'Yön için: ' : 'Sinyali geçersiz kılan: ') + x.invalid + '.'));
     var st = statFor(x.code);
     box.append(el('p', 'sub', st ? 'Bu sinyal türünün bu telefondaki geçmiş isabeti: %' + num(st.rate, 0) + ' (' + st.n + ' değerlendirme, ' + st.flat + ' yatay).'
       : 'Bu sinyal türü için henüz yeterli geçmiş değerlendirme yok.'));
     box.append(el('p', 'sub', 'Sinyal göstergelerden kurala göre üretilir; kesin yön ya da fiyat hedefi değildir, yatırım tavsiyesi değildir. Karar sizindir.'));
   }
   function scoreCls(v) { return v == null ? '' : (v >= 3 ? 'up' : (v <= -3 ? 'down' : 'flat')); }
+
+  /* ---------- iller (kuyumcular odaları) ---------- */
+  function extLink(url, text, cls) { var a = el('a', cls || 'btn btn-sm', text + ' ↗'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; return a; }
+  function odaItem(o) {
+    var li = el('li', 'item');
+    var top = el('div', 'item-top'); top.append(el('span', 'badge', o.il)); li.append(top);
+    li.append(el('div', 'item-title', o.oda));
+    if (o.ne) li.append(el('p', 'item-detail', o.ne));
+    if (o.neden) li.append(el('p', 'item-detail iller-neden', 'Uygulamada neden yok: ' + o.neden));
+    if (o.not) li.append(el('p', 'item-detail', o.not));
+    var row = el('div', 'btn-row');
+    if (o.url) row.append(extLink(o.url, o.urlTxt || 'Siteyi aç'));
+    (o.ek || []).forEach(function (e) { row.append(extLink(e.url, e.t, 'btn btn-sm btn-ghost')); });
+    if (row.firstChild) li.append(row);
+    return li;
+  }
+  function renderIller() {
+    var L = window.GMIILLER;
+    if (!L) return;
+    var y = clear($('iller-yayin')); (L.yayinlayan || []).forEach(function (o) { y.append(odaItem(o)); });
+    var a = clear($('iller-app')); (L.uygulama || []).forEach(function (o) { a.append(odaItem(o)); });
+    var k = clear($('iller-yok'));
+    (L.bulunamayan || []).forEach(function (o) {
+      var li = el('li', 'item iller-mini'); li.append(el('strong', null, o.il + ' '), el('span', 'pmeta', o.oda));
+      if (o.not) li.append(el('div', 'pmeta', o.not));
+      k.append(li);
+    });
+    if (L.ikoEkran) $('iller-iko').textContent = L.ikoEkran.iller.join(', ') + '. Bu illerdeki bazı kuyumcular İKO\'nun fiyat ekranını kullanıyor; bölge fiyatları İKO\'nun uygulamalarında görülebilir. Kaynak: ' + L.ikoEkran.kaynak + ' (güncel olmayabilir).';
+    $('iller-not').textContent = 'Son kontrol: ' + L.kontrol + '. Bazı sitelerdeki "il il altın fiyatları" sayfaları her il için aynı ulusal fiyatı gösteriyor; bunlar il fiyatı olmadığı için burada kullanılmıyor. Bir oda verisinin uygulamada kullanılmasına yazılı izin verirse fiyatlar doğrudan bu sekmeye eklenebilir.';
+    // karşılaştırma için ulusal serbest piyasa (Truncgil)
+    var ref = clear($('iller-ref')), g = rows('gold'), gram = g.filter(function (r) { return r.metric === 'RETAIL'; })[0], cy = g.filter(function (r) { return r.metric === 'CEYREK'; })[0];
+    if (gram || cy) {
+      var c = el('div', 'card iller-refcard');
+      c.append(el('div', 'pname', 'Karşılaştırma için: ulusal serbest piyasa (Truncgil)'));
+      var parts = [];
+      if (gram) parts.push('Gram altın alış ' + num(gram.bid, 2) + ' / satış ' + num(gram.ask, 2) + ' TL');
+      if (cy) parts.push('Çeyrek alış ' + num(cy.bid, 0) + ' / satış ' + num(cy.ask, 0) + ' TL');
+      c.append(el('div', 'item-detail', parts.join(' · ')));
+      c.append(el('div', 'pmeta', 'Saat ' + ((gram || cy).time || '—') + '. Odaların tavsiye fiyatları genelde bunun üstündedir (işçilik ve kâr payı). Tüm türler Altın sekmesinde.'));
+      ref.append(c);
+    }
+  }
 
   function renderTech() {
     var tb = clear($('tech').tBodies[0]);
@@ -601,6 +693,7 @@
   $('btn-copy').addEventListener('click', copyCode);
   $('ch-close').addEventListener('click', closeChart);
   $('chart-bg').addEventListener('click', closeChart);
+  $('ch-terms').addEventListener('click', openTerms);
   document.querySelectorAll('#ch-tf button').forEach(function (b) { b.addEventListener('click', function () { if (b.disabled) return; chartState.tf = b.getAttribute('data-tf'); drawChart(); }); });
   document.querySelectorAll('#ch-span button').forEach(function (b) { b.addEventListener('click', function () { chartState.span = +b.getAttribute('data-span'); drawChart(); }); });
   $('ver').textContent = 'Sürüm ' + VERSION;
@@ -622,6 +715,7 @@
   window.addEventListener('resize', function () { clearTimeout(resizeT); resizeT = setTimeout(function () { if (!$('v-altin').hidden) renderLadder(); if (chartState.key) drawChart(); }, 200); });
 
   if (!NATIVE && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+  renderIller();
   show(location.hash.slice(1));
   load();
 })();

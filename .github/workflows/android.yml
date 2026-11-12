@@ -3,7 +3,7 @@ name: Android uygulaması
 on:
   push:
     branches: [main]
-    paths: ['android/**', 'index.html', 'app.js', 'app.css', 'analysis.js', 'chart.js', 'config.js', 'engine/ta_engine.js', 'icons/**', '.github/workflows/android.yml']
+    paths: ['android/**', 'index.html', 'app.js', 'app.css', 'analysis.js', 'chart.js', 'yorum.js', 'iller.js', 'config.js', 'engine/ta_engine.js', 'icons/**', '.github/workflows/android.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -28,7 +28,7 @@ jobs:
           W=android/app/src/main/assets/www
           rm -rf "$W" && mkdir -p "$W/engine" "$W/icons" "$W/data"
           cp index.html app.js app.css config.js "$W/"
-          for f in analysis.js chart.js; do if [ -f "$f" ]; then cp "$f" "$W/"; fi; done
+          for f in analysis.js chart.js yorum.js iller.js; do if [ -f "$f" ]; then cp "$f" "$W/"; fi; done
           cp engine/ta_engine.js "$W/engine/"
           cp icons/*.png "$W/icons/"
           cp data/app_data.json "$W/data/" || true

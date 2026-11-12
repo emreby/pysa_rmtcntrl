@@ -246,6 +246,11 @@
   }
 
   /* ---------------- tek varlık analizi ---------------- */
+  var IND_D = ['sma20', 'sma50', 'sma200', 'ema9', 'ema21', 'macd', 'macd_sig', 'macd_hist', 'macd_hist_prev', 'rsi', 'rsi_prev', 'adx', 'pdi', 'mdi',
+    'bb_u', 'bb_m', 'bb_l', 'bb_pctb', 'atr14', 'h52', 'l52', 'day_h', 'day_l', 'roc12', 'prev_close', 'price_engine'];
+  var IND_I = ['c', 'rsi', 'rsi_prev', 'macd', 'macd_sig', 'macd_hist', 'macd_hist_prev', 'ema9', 'ema21', 'adx', 'pdi', 'mdi'];
+  var IND_W = ['c', 'chg_wtd_pct', 'rsi', 'macd_hist', 'macd_hist_prev', 'sma20'];
+  function pick(r, keys) { var o = {}; keys.forEach(function (k) { var v = f(r[k]); if (v != null) o[k] = r7(v); }); return o; }
   function analyzeAsset(key, sym, d, h, ns) {
     var meta = d.meta || {}, off = meta.gmtoffset || 0;
     var D = parseRow(ENG.HEAD.D, ENG.dailyRow(key, sym, meta, clone(d.bars), ns));
@@ -272,12 +277,15 @@
       }
     }
     var dsr = dscore(D), ssr = stscore([H4, H1]), lv = levels(key, D, W);
+    // yorum motoru için göstergelerin sayısal değerleri (günlük, 4 saat, 1 saat, haftalık)
+    var ind = { d: pick(D, IND_D), h4: H4 ? pick(H4, IND_I) : null, h1: H1 ? pick(H1, IND_I) : null, w: W ? pick(W, IND_W) : null,
+      psar_up: D.psar_up === 'true' ? true : (D.psar_up === 'false' ? false : null) };
     var t = {
       key: key, name: A[key].name, dp: A[key].dp, order: A[key].order,
       price: f(D.price), price_engine: f(D.price_engine), prev: f(D.prev_close), chg: f(D.chg_pct), time: D.time_trt, fx: !!fx,
       ds: dsr.s, dn: dsr.n, votes: dsr.votes, ss: ssr.s, sn: ssr.n, rsi: f(D.rsi), adx: f(D.adx), atr: f(D.atr14),
       trend: trend(D), rsiState: rsiState(f(D.rsi)), sup: lv.sup, res: lv.res, msup: lv.msup, mres: lv.mres,
-      sma50: f(D.sma50), sma200: f(D.sma200), h52: f(D.h52), l52: f(D.l52), stale: !!d.stale
+      sma50: f(D.sma50), sma200: f(D.sma200), h52: f(D.h52), l52: f(D.l52), stale: !!d.stale, ind: ind
     };
     t.sig = signal(t);
     return t;
@@ -592,7 +600,8 @@
       signals: sig.map(function (t) {
         return { key: t.key, name: t.name, dp: t.dp, unit: A[t.key].unit, price: t.price, chg: t.chg, code: t.sig.code, label: t.sig.label, ds: t.ds, dn: t.dn, ss: t.ss, sn: t.sn,
           rsi: t.rsi, rsiState: t.rsiState, adx: t.adx, trend: t.trend, votes: t.votes, notes: t.sig.notes, invalid: t.sig.invalid,
-          s1: t.msup[0] || null, s2: t.msup[1] || null, r1: t.mres[0] || null, r2: t.mres[1] || null, stale: t.stale, synthetic: t.key === 'GRAM' };
+          s1: t.msup[0] || null, s2: t.msup[1] || null, r1: t.mres[0] || null, r2: t.mres[1] || null, stale: t.stale, synthetic: t.key === 'GRAM',
+          atr: t.atr, ind: t.ind, time: t.time };
       }),
       errors: errs
     };
