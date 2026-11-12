@@ -1,11 +1,18 @@
-/* GMI Piyasa — mobil uygulama (PWA). Veri: data/app_data.json (şema gmi-app/1). */
+/* GMI Piyasa — mobil uygulama. Android'de veriyi telefon çeker ve analizi telefonda yapar (analysis.js);
+   web sürümü data/app_data.json dosyasını okur. */
 (function () {
   'use strict';
   var CFG = window.GMI_CONFIG || {};
-  var VERSION = '1.0.0';
+  var VERSION = '2.1.0';
+  var NATIVE = window.GMI_NATIVE || null;
+  var GA = window.GMIA || null;
+  var USE_PHONE = !!(NATIVE && GA);
+  var SIG_CLS = { GAL: 'sg-gal', AL: 'sg-al', NOTR: 'sg-notr', SAT: 'sg-sat', GSAT: 'sg-gsat', VERI: 'sg-veri' };
+  var STRIP = ['GRAM', 'GOLD_FUT', 'SILVER_FUT', 'USDTRY', 'XU100', 'BTC'];
+  var chartState = { key: null, tf: 'G', span: 1 };
   var MON = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
   var VIEWS = ['piyasa', 'altin', 'teknik', 'gundem', 'karne'];
-  var state = { data: null, fetchedAt: 0, offline: false, loading: false };
+  var state = { data: null, fetchedAt: 0, offline: false, loading: false, error: null };
   var installEvt = null;
 
   /* ---------- yardımcılar ---------- */
@@ -36,6 +43,20 @@
     if (state.loading) return;
     state.loading = true;
     $('btn-refresh').classList.add('spin');
+    if (USE_PHONE) {
+      if (!state.data) { var c = GA.cached(); if (c) { state.data = c; render(); } }
+      $('m-updated').textContent = 'Veriler telefona çekiliyor…';
+      GA.run(function (done, total) { $('m-updated').textContent = 'Veriler telefona çekiliyor… ' + done + '/' + total; })
+        .then(function (d) { state.data = d; state.error = null; })
+        .catch(function (e) { state.error = (e && e.message) || String(e); })
+        .then(function () {
+          state.loading = false; state.fetchedAt = Date.now();
+          $('btn-refresh').classList.remove('spin');
+          render();
+          if (chartState.key && !$('chart-sheet').hidden) drawChart();
+        });
+      return;
+    }
     fetch(CFG.dataUrl + '?t=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
       .then(function (d) {
@@ -66,7 +87,7 @@
       $('m-updated').textContent = 'Veri alınamadı. İnternet bağlantınızı kontrol edip yenileyin.';
       return;
     }
-    renderHeader(); renderAlerts(); renderPrices(); renderGold(); renderTech(); renderAgenda(); renderPerf(); renderBanner();
+    renderHeader(); renderStrip(); renderAlerts(); renderPrices(); renderGold(); renderSignals(); renderTech(); renderAgenda(); renderPerf(); renderBanner();
   }
 
   function status() { return rows('status')[0] || {}; }
@@ -86,10 +107,16 @@
     var b = $('banner'); clear(b);
     var msgs = [];
     if (state.offline || navigator.onLine === false) msgs.push('Çevrimdışısınız; son kaydedilen veriler gösteriliyor.');
+    if (state.error) msgs.push('Analiz tamamlanamadı: ' + state.error + '. Son kaydedilen veriler gösteriliyor.');
     var gen = Date.parse((state.data && state.data.generated_at) || '');
     if (isFinite(gen)) {
       var h = (Date.now() - gen) / 36e5;
-      if (h > (CFG.staleHours || 12)) msgs.push('Veriler ' + Math.round(h) + ' saattir güncellenmedi. Hafta sonu ya da bilgisayarınız kapalıyken seanslar çalışmaz.');
+      if (USE_PHONE && h > 3 && !state.loading) msgs.push('Veriler ' + Math.round(h) + ' saat önce hesaplandı. Yenilemek için ↻ düğmesine dokunun.');
+      if (!USE_PHONE && h > (CFG.staleHours || 12)) msgs.push('Bu web sayfası artık otomatik güncellenmiyor (veriler ' + Math.round(h) + ' saatlik). Güncel veri için Android uygulamasını kurun.');
+    }
+    if (!USE_PHONE && CFG.apkUrl) {
+      var a = el('a', 'btn', 'Android uygulamasını indir'); a.href = CFG.apkUrl; a.rel = 'noopener';
+      b.append(a);
     }
     if (installEvt && !isStandalone()) {
       var span = el('span', null, 'Uygulamayı telefona yükleyebilirsiniz.');
@@ -233,14 +260,110 @@
   }
 
   function scoreTxt(v) { return v == null ? '—' : sign(v) + Math.abs(v); }
+  function sigBadge(code, label) { return el('span', 'sig ' + (SIG_CLS[code] || 'sg-veri'), label || code || '—'); }
+  function statFor(code) {
+    if (!GA || !GA.signalStats) return null;
+    var b = GA.signalStats().by[code];
+    if (!b) return null;
+    var n = (b.isabet || 0) + (b['ıska'] || 0);
+    return n ? { rate: 100 * b.isabet / n, n: n, flat: b.yatay || 0 } : null;
+  }
+
+  function renderStrip() {
+    var box = clear($('sig-strip')), list = rows('signals');
+    box.hidden = !list.length;
+    STRIP.forEach(function (k) {
+      var x = list.filter(function (r) { return r.key === k; })[0];
+      if (!x) return;
+      var b = el('button', 'chip'); b.type = 'button';
+      b.append(el('span', 'chip-n', x.name.replace(/ \(.*\)$/, '')), sigBadge(x.code, x.label));
+      b.addEventListener('click', function () { openChart(k); });
+      box.append(b);
+    });
+  }
+
+  function renderSignals() {
+    var box = clear($('signals')), list = rows('signals');
+    $('signals-empty').hidden = list.length > 0;
+    list.forEach(function (x) {
+      var c = el('button', 'card sig-card'); c.type = 'button';
+      var top = el('div', 'sig-top'); top.append(el('span', 'pname', x.name), sigBadge(x.code, x.label));
+      var line = el('div', 'sig-line');
+      line.append(el('span', 'pval pval-sm', num(x.price, x.dp) + (x.unit ? ' ' + x.unit : '')), el('span', 'pchg ' + dir(x.chg), pct(x.chg)));
+      c.append(top, line, el('div', 'pmeta', 'Günlük skor ' + scoreTxt(x.ds) + '/' + x.dn + ' · kısa vade ' + (x.ss == null ? '—' : scoreTxt(x.ss) + '/' + x.sn) + ' · ' + (x.trend || '')));
+      if (x.invalid) c.append(el('div', 'pmeta', (x.code === 'NOTR' ? 'Yön için: ' : 'Geçersiz kılan: ') + x.invalid));
+      if (x.notes && x.notes.length) c.append(el('div', 'sig-note', x.notes[0]));
+      if (x.stale) c.append(el('div', 'sig-note', 'Güncel veri alınamadı; önbellekteki veriyle hesaplandı.'));
+      c.addEventListener('click', function () { openChart(x.key); });
+      box.append(c);
+    });
+  }
+
+  function openChart(key) {
+    chartState.key = key;
+    var a = GA && GA.assets && GA.assets[key];
+    if (chartState.tf !== 'G' && !(a && a.intra)) chartState.tf = 'G';
+    $('chart-sheet').hidden = false; $('chart-bg').hidden = false;
+    document.body.classList.add('noscroll');
+    drawChart();
+  }
+  function closeChart() { $('chart-sheet').hidden = true; $('chart-bg').hidden = true; document.body.classList.remove('noscroll'); chartState.key = null; }
+  function lvl(o, lbl, kind) { return o && o.v != null ? { v: o.v, label: lbl, kind: kind, note: (o.labels || []).join(', ') } : null; }
+  function drawChart() {
+    var key = chartState.key; if (!key) return;
+    var sig = rows('signals').filter(function (x) { return x.key === key; })[0];
+    var t = rows('tech').filter(function (x) { return x.key === key; })[0];
+    var a = (GA && GA.assets && GA.assets[key]) || {};
+    var name = (sig && sig.name) || (t && t.name) || a.name || key, dp = sig ? sig.dp : (t ? t.dp : (a.dp || 2)), unit = sig ? sig.unit : (a.unit || '');
+    $('ch-name').textContent = name;
+    $('ch-sub').textContent = sig ? num(sig.price, dp) + (unit ? ' ' + unit : '') + ' · ' + pct(sig.chg) + ' · teknik sinyal: ' + sig.label : '';
+    document.querySelectorAll('#ch-tf button').forEach(function (b) {
+      var tf = b.getAttribute('data-tf'); b.setAttribute('aria-pressed', tf === chartState.tf ? 'true' : 'false');
+      b.disabled = tf !== 'G' && !a.intra;
+    });
+    var labels = (window.GMICHART && GMICHART.SPAN_LABEL[chartState.tf]) || ['kısa', 'orta', 'uzun'];
+    document.querySelectorAll('#ch-span button').forEach(function (b) {
+      var i = +b.getAttribute('data-span'); b.textContent = labels[i]; b.setAttribute('aria-pressed', i === chartState.span ? 'true' : 'false');
+    });
+    var levels = [];
+    if (sig) levels = [lvl(sig.s1, 'S1', 's'), lvl(sig.s2, 'S2', 's'), lvl(sig.r1, 'R1', 'r'), lvl(sig.r2, 'R2', 'r')].filter(Boolean);
+    else if (t) levels = [['s1', 'S1', 's'], ['s2', 'S2', 's'], ['r1', 'R1', 'r'], ['r2', 'R2', 'r']].map(function (x) { return t[x[0]] != null ? { v: t[x[0]], label: x[1], kind: x[2] } : null; }).filter(Boolean);
+    var ser = GA && GA.seriesFor ? GA.seriesFor(key) : null;
+    var box = $('ch-box');
+    if (!window.GMICHART || !ser || !ser.d) { clear(box).append(el('p', 'sub', 'Grafikler Android uygulamasında, veriler telefona çekildikten sonra görünür.')); }
+    else GMICHART.render(box, { daily: ser.d, hourly: ser.h, tf: chartState.tf, span: chartState.span, dp: dp, unit: unit, name: name, levels: levels });
+    renderSigDetail(sig);
+  }
+  function renderSigDetail(x) {
+    var box = clear($('ch-sig'));
+    if (!x) return;
+    var h = el('div', 'sig-top'); h.append(el('strong', null, 'Teknik sinyal'), sigBadge(x.code, x.label)); box.append(h);
+    box.append(el('p', 'sub', 'Günlük skor ' + scoreTxt(x.ds) + '/' + x.dn + ' (yedi göstergenin oyu), kısa vade ' + (x.ss == null ? 'hesaplanamadı' : scoreTxt(x.ss) + '/' + x.sn + ' (4 saat ve 1 saat)') +
+      ' · RSI ' + num(x.rsi, 0) + ' (' + (x.rsiState || '—') + ') · ADX ' + num(x.adx, 0) + ' · ' + (x.trend || '')));
+    var ul = el('ul', 'votes');
+    (x.votes || []).forEach(function (v) { ul.append(el('li', v.ok ? 'up' : 'down', (v.ok ? '▲ ' : '▼ ') + v.txt)); });
+    box.append(ul);
+    (x.notes || []).forEach(function (n) { box.append(el('p', 'sig-note', n)); });
+    var lv = [];
+    if (x.s1) lv.push('S1 ' + num(x.s1.v, x.dp) + ' (' + x.s1.labels.join(', ') + ')');
+    if (x.r1) lv.push('R1 ' + num(x.r1.v, x.dp) + ' (' + x.r1.labels.join(', ') + ')');
+    if (lv.length) box.append(el('p', 'sub', 'Anlamlı seviyeler: ' + lv.join(' · ')));
+    if (x.invalid) box.append(el('p', 'sub', (x.code === 'NOTR' ? 'Yön için: ' : 'Sinyali geçersiz kılan: ') + x.invalid + '.'));
+    var st = statFor(x.code);
+    box.append(el('p', 'sub', st ? 'Bu sinyal türünün bu telefondaki geçmiş isabeti: %' + num(st.rate, 0) + ' (' + st.n + ' değerlendirme, ' + st.flat + ' yatay).'
+      : 'Bu sinyal türü için henüz yeterli geçmiş değerlendirme yok.'));
+    box.append(el('p', 'sub', 'Sinyal göstergelerden kurala göre üretilir; kesin yön ya da fiyat hedefi değildir, yatırım tavsiyesi değildir. Karar sizindir.'));
+  }
   function scoreCls(v) { return v == null ? '' : (v >= 3 ? 'up' : (v <= -3 ? 'down' : 'flat')); }
 
   function renderTech() {
     var tb = clear($('tech').tBodies[0]);
     rows('tech').slice().sort(function (a, b) { return a.order - b.order; }).forEach(function (r) {
       var tr = el('tr');
-      tr.append(td(r.name), td(scoreTxt(r.daily_score), scoreCls(r.daily_score)), td(scoreTxt(r.short_score), scoreCls(r.short_score)),
+      var sc = el('td'); if (r.signal) sc.append(sigBadge(r.signal_code, r.signal)); else sc.textContent = '—';
+      tr.append(td(r.name), sc, td(scoreTxt(r.daily_score), scoreCls(r.daily_score)), td(scoreTxt(r.short_score), scoreCls(r.short_score)),
         td(num(r.rsi, 1)), td(num(r.s1, r.dp)), td(num(r.r1, r.dp)), td(r.trend || '—', 'wrap'));
+      tr.className = 'tap'; tr.addEventListener('click', function () { openChart(r.key); });
       tb.append(tr);
     });
     var sb = clear($('scen').tBodies[0]);
@@ -284,6 +407,24 @@
   }
 
   function renderPerf() {
+    var ss = clear($('sig-stats'));
+    if (GA && GA.signalStats) {
+      var by = GA.signalStats().by, codes = ['GAL', 'AL', 'SAT', 'GSAT'].filter(function (c) { return by[c]; });
+      if (codes.length) {
+        var tbl = el('table', 'tbl'), th = el('thead'), hr = el('tr');
+        ['Sinyal', 'İsabet', 'Iska', 'Yatay', 'İsabet oranı'].forEach(function (h) { hr.append(el('th', null, h)); });
+        th.append(hr); tbl.append(th);
+        var tb2 = el('tbody');
+        codes.forEach(function (c) {
+          var b = by[c], n = (b.isabet || 0) + (b['ıska'] || 0), tr = el('tr'), sc = el('td');
+          sc.append(sigBadge(c, GA.SIG_LABEL[c]));
+          tr.append(sc, td(String(b.isabet || 0)), td(String(b['ıska'] || 0)), td(String(b.yatay || 0)), td(n ? '%' + num(100 * b.isabet / n, 0) : '—'));
+          tb2.append(tr);
+        });
+        tbl.append(tb2);
+        var w = el('div', 'tw'); w.append(tbl); ss.append(w);
+      }
+    }
     var p = rows('perf');
     $('perf-empty').hidden = p.length > 0;
     $('perf-body').hidden = p.length === 0;
@@ -318,7 +459,42 @@
 
   /* ---------- ayarlar, yükleme, bildirimler ---------- */
   function isStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
-  function openSheet() { $('sheet').hidden = false; $('sheet-bg').hidden = false; refreshPushStatus(); }
+  function openSheet() {
+    $('sheet').hidden = false; $('sheet-bg').hidden = false;
+    if (NATIVE) { renderBgLog(); renderNt(); } else refreshPushStatus();
+  }
+  function renderBgLog() {
+    if (!NATIVE) return;
+    var j = {};
+    try { j = JSON.parse(NATIVE.backgroundLog() || '{}'); } catch (e) { j = {}; }
+    if (!j.time) { $('bg-log').textContent = 'Henüz arka plan kontrolü yapılmadı.'; return; }
+    var px = j.prices || {}, parts = [];
+    if (px.ons) parts.push('ons ' + px.ons);
+    if (px.gram) parts.push('gram ' + px.gram);
+    if (px.usdtry) parts.push('USD/TRY ' + px.usdtry);
+    var txt = 'Son kontrol: ' + when(j.time) + (j.note ? ' · ' + j.note : '') + (parts.length ? ' · ' + parts.join(' · ') : '') + (j.new_alerts != null ? ' · yeni uyarı: ' + j.new_alerts : '');
+    if (j.errors && j.errors.length) txt += ' · alınamayan veri: ' + j.errors.length;
+    $('bg-log').textContent = txt;
+  }
+  function renderNt() {
+    if (!NATIVE) return;
+    var on = false; try { on = NATIVE.notificationsAllowed(); } catch (e) { on = false; }
+    $('nt-status').textContent = on ? 'Bildirim izni açık.' : 'Bildirim izni kapalı. "Bildirim izni" düğmesine dokunun.';
+  }
+  function setupNative() {
+    if (!NATIVE) { if ($('apk-link') && CFG.apkUrl) $('apk-link').href = CFG.apkUrl; return; }
+    $('native-only').hidden = false; $('web-only').hidden = true;
+    try { $('bg-toggle').checked = NATIVE.backgroundOn(); } catch (e) { /* yok say */ }
+    $('bg-toggle').addEventListener('change', function () { NATIVE.setBackground(this.checked); renderBgLog(); });
+    $('btn-check-now').addEventListener('click', function () {
+      NATIVE.checkNow(); $('bg-log').textContent = 'Kontrol başlatıldı; sonuç birkaç saniye içinde burada görünür.';
+      setTimeout(renderBgLog, 12000); setTimeout(renderBgLog, 30000);
+    });
+    $('btn-battery').addEventListener('click', function () { NATIVE.openBatterySettings(); });
+    $('btn-nt').addEventListener('click', function () { NATIVE.requestNotifications(); setTimeout(renderNt, 2000); });
+    $('btn-nt-test').addEventListener('click', function () { NATIVE.testNotification(); });
+    try { $('ver').textContent = 'Sürüm ' + VERSION + ' · Android ' + NATIVE.version(); } catch (e) { /* yok say */ }
+  }
   function closeSheet() { $('sheet').hidden = true; $('sheet-bg').hidden = true; }
   function doInstall() {
     if (!installEvt) return;
@@ -423,7 +599,16 @@
   $('btn-push').addEventListener('click', enablePush);
   $('btn-test').addEventListener('click', testPush);
   $('btn-copy').addEventListener('click', copyCode);
+  $('ch-close').addEventListener('click', closeChart);
+  $('chart-bg').addEventListener('click', closeChart);
+  document.querySelectorAll('#ch-tf button').forEach(function (b) { b.addEventListener('click', function () { if (b.disabled) return; chartState.tf = b.getAttribute('data-tf'); drawChart(); }); });
+  document.querySelectorAll('#ch-span button').forEach(function (b) { b.addEventListener('click', function () { chartState.span = +b.getAttribute('data-span'); drawChart(); }); });
   $('ver').textContent = 'Sürüm ' + VERSION;
+  setupNative();
+  window.gmiOnResume = function () {
+    if (!state.loading && Date.now() - state.fetchedAt > (CFG.autoRefreshMinutes || 5) * 6e4) load();
+    else if (!$('sheet').hidden) renderBgLog();
+  };
   if (isStandalone()) $('install-text').textContent = 'Uygulama bu telefonda yüklü.';
 
   window.addEventListener('beforeinstallprompt', function (e) {
@@ -434,9 +619,9 @@
     if (document.visibilityState === 'visible' && Date.now() - state.fetchedAt > (CFG.autoRefreshMinutes || 5) * 6e4) load();
   });
   var resizeT = null;
-  window.addEventListener('resize', function () { clearTimeout(resizeT); resizeT = setTimeout(function () { if (!$('v-altin').hidden) renderLadder(); }, 200); });
+  window.addEventListener('resize', function () { clearTimeout(resizeT); resizeT = setTimeout(function () { if (!$('v-altin').hidden) renderLadder(); if (chartState.key) drawChart(); }, 200); });
 
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+  if (!NATIVE && 'serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
   show(location.hash.slice(1));
   load();
 })();

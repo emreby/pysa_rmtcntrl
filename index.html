@@ -32,6 +32,7 @@
   <section class="view" id="v-piyasa" data-view="piyasa">
     <p class="lede" id="summary"></p>
     <p class="note" id="note" hidden></p>
+    <div class="sig-strip" id="sig-strip"></div>
     <h2 class="h2">Uyarılar</h2>
     <p class="sub" id="alerts-empty" hidden>Kayıtlı uyarı yok.</p>
     <ul class="list" id="alerts"></ul>
@@ -62,10 +63,14 @@
   </section>
 
   <section class="view" id="v-teknik" data-view="teknik" hidden>
+    <h2 class="h2">Teknik sinyaller</h2>
+    <p class="sub">Göstergelere göre kural tabanlı sinyal: AL, SAT ya da NÖTR. Bir karta dokunun; grafik ve gerekçesi açılır. <b>Yatırım tavsiyesi değildir</b>: sinyaller sık yanılır, geçmiş isabetleri Karne sekmesindedir.</p>
+    <div id="signals" class="sig-list"></div>
+    <p class="sub" id="signals-empty" hidden>Sinyaller Android uygulamasında, veriler telefonda hesaplandıktan sonra görünür.</p>
     <h2 class="h2">Teknik görünüm</h2>
     <p class="sub">Hesaplama: <span id="tech-asof">—</span>. Günlük skor yedi göstergenin oyudur (−7…+7): +3 ve üzeri pozitif, −3 ve altı negatif. Kısa vade skoru 4 saatlik ve 1 saatlik grafiklerden gelir (−6…+6).</p>
     <div class="tw"><table class="tbl" id="tech">
-      <thead><tr><th>Varlık</th><th>Günlük</th><th>Kısa vade</th><th>RSI</th><th>Destek 1</th><th>Direnç 1</th><th>Trend</th></tr></thead>
+      <thead><tr><th>Varlık</th><th>Sinyal</th><th>Günlük</th><th>Kısa vade</th><th>RSI</th><th>Destek 1</th><th>Direnç 1</th><th>Trend</th></tr></thead>
       <tbody></tbody>
     </table></div>
     <h2 class="h2">Senaryo eşikleri ve şu anki konum</h2>
@@ -86,8 +91,10 @@
   </section>
 
   <section class="view" id="v-karne" data-view="karne" hidden>
-    <h2 class="h2">Tahminler ne kadar tuttu?</h2>
-    <p class="sub" id="perf-empty">Henüz değerlendirilmiş tahmin yok. Akşam seansı günün tahminlerini değerlendirdiğinde sonuçlar burada görünür.</p>
+    <h2 class="h2">Sinyaller ne kadar tuttu?</h2>
+    <p class="sub">Her AL ve SAT sinyali verildiği andaki fiyatla kaydedilir, 24–72 saat sonra uygulama açıldığında o anki fiyatla değerlendirilir. ±%0,25 içindeki hareket "yatay" sayılır.</p>
+    <div id="sig-stats"></div>
+    <p class="sub" id="perf-empty">Henüz değerlendirilmiş sinyal yok. İlk sonuçlar, sinyallerin verilmesinden en az bir gün sonra görünür.</p>
     <div id="perf-body" hidden>
       <div class="tiles">
         <div class="card"><div class="pname">Yön isabeti</div><div class="pval" id="p-rate">—</div><div class="pmeta">isabet ÷ (isabet + ıska)</div></div>
@@ -96,7 +103,7 @@
       </div>
       <h3 class="h3">Son değerlendirmeler</h3>
       <div class="tw"><table class="tbl" id="perf">
-        <thead><tr><th>Varlık</th><th>Tahmin</th><th>Beklenen yön</th><th>O anki fiyat</th><th>Gerçekleşen</th><th>Değişim</th><th>Sonuç</th></tr></thead>
+        <thead><tr><th>Varlık</th><th>Verildi</th><th>Sinyal</th><th>O anki fiyat</th><th>Gerçekleşen</th><th>Değişim</th><th>Sonuç</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
@@ -123,10 +130,44 @@
   </button>
 </nav>
 
+<div class="sheet-backdrop" id="chart-bg" hidden></div>
+<aside class="sheet sheet-full" id="chart-sheet" hidden aria-label="Teknik grafik">
+  <div class="sheet-head"><div><strong id="ch-name">—</strong><div class="pmeta" id="ch-sub"></div></div><button class="icon-btn" id="ch-close" aria-label="Kapat">✕</button></div>
+  <div class="seg" id="ch-tf" role="group" aria-label="Zaman dilimi">
+    <button type="button" data-tf="G" aria-pressed="true">Günlük</button><button type="button" data-tf="4S" aria-pressed="false">4 saat</button><button type="button" data-tf="1S" aria-pressed="false">1 saat</button>
+  </div>
+  <div class="seg" id="ch-span" role="group" aria-label="Aralık">
+    <button type="button" data-span="0" aria-pressed="false">kısa</button><button type="button" data-span="1" aria-pressed="true">orta</button><button type="button" data-span="2" aria-pressed="false">uzun</button>
+  </div>
+  <div id="ch-box" class="chart-box"></div>
+  <div id="ch-sig"></div>
+</aside>
+
 <div class="sheet-backdrop" id="sheet-bg" hidden></div>
 <aside class="sheet" id="sheet" hidden aria-label="Ayarlar">
   <div class="sheet-head"><strong>Ayarlar</strong><button class="icon-btn" id="btn-close" aria-label="Kapat">✕</button></div>
 
+  <div id="native-only" hidden>
+    <h3 class="h3">Arka plan kontrolü</h3>
+    <p class="sub">Uygulama kapalıyken telefon yaklaşık 15 dakikada bir fiyatları kontrol eder (Android izin verdikçe). Eşik aşılırsa ya da son analizin destek/direnç seviyesi kırılırsa bildirim gönderir. Tam analiz ve sinyaller, uygulamayı açtığınızda yenilenir.</p>
+    <label class="switch"><input type="checkbox" id="bg-toggle"> <span>Arka plan kontrolü açık</span></label>
+    <p class="sub" id="bg-log">—</p>
+    <div class="btn-row">
+      <button class="btn" id="btn-check-now">Şimdi kontrol et</button>
+      <button class="btn btn-ghost" id="btn-battery">Pil kısıtlamasını kaldır</button>
+    </div>
+    <p class="sub">Bazı telefonlar (Xiaomi, Huawei, Samsung) pil tasarrufu için arka plan işlerini durdurur. Bildirimler gecikiyorsa "Pil kısıtlamasını kaldır"a dokunup GMI Piyasa için <b>Kısıtlama yok</b> seçin.</p>
+    <h3 class="h3">Bildirimler</h3>
+    <p class="sub" id="nt-status">—</p>
+    <div class="btn-row">
+      <button class="btn" id="btn-nt">Bildirim izni</button>
+      <button class="btn btn-ghost" id="btn-nt-test">Deneme bildirimi</button>
+    </div>
+  </div>
+
+  <div id="web-only">
+  <h3 class="h3">Android uygulaması</h3>
+  <p class="sub">Bu web sayfası artık otomatik güncellenmiyor. Güncel veri, grafikler, sinyaller ve arka plan bildirimleri için Android uygulamasını kurun: <a id="apk-link" href="#" rel="noopener">GMI Piyasa APK</a>.</p>
   <h3 class="h3">Uygulamayı yükle</h3>
   <p class="sub" id="install-text">Chrome menüsünden (⋮) <b>Uygulamayı yükle</b> ya da <b>Ana ekrana ekle</b> seçeneğine dokunun.</p>
   <button class="btn" id="btn-install" hidden>Uygulamayı yükle</button>
@@ -142,6 +183,7 @@
     <textarea id="push-code" readonly rows="5"></textarea>
     <button class="btn" id="btn-copy">Kodu kopyala</button>
   </div>
+  </div>
 
   <details class="terms">
     <summary>Terimler: bu uygulamadaki kavramlar</summary>
@@ -151,6 +193,8 @@
       <dt>Kısa vade skoru</dt><dd>4 saatlik ve 1 saatlik grafiklerde EMA 9/21, MACD ve RSI oyları.</dd>
       <dt>RSI</dt><dd>0–100 arası hız göstergesi. 70 üzeri aşırı alım, 30 altı aşırı satım bölgesi sayılır.</dd>
       <dt>ATR</dt><dd>Ortalama günlük fiyat aralığı; bir seviyenin fiyata yakın mı uzak mı olduğunu ölçer.</dd>
+      <dt>Teknik sinyal</dt><dd>GÜÇLÜ AL: günlük skor +5 ve üzeri, kısa vade +2 ve üzeri. AL: günlük +3 ve üzeri, kısa vade −1'in altında değil. SAT ve GÜÇLÜ SAT bunun tersidir; arası NÖTR. Sinyal bir kuralın sonucudur, kesin yön ya da fiyat hedefi değildir.</dd>
+      <dt>Geçersiz kılan seviye</dt><dd>Sinyalin dayandığı görünümü bozan seviye. Örneğin AL sinyalinde en yakın anlamlı desteğin altında günlük kapanış.</dd>
       <dt>Teorik gram altın</dt><dd>Ons fiyatı × USD/TRY ÷ 31,1035. Bir ons 31,1035 gramdır.</dd>
       <dt>Prim ve makas</dt><dd>Prim, piyasa fiyatının teorik değerden yüzde farkıdır. Makas, alış ile satış arasındaki farktır.</dd>
       <dt>Vadeli ve spot</dt><dd>Vadeli (COMEX) ileri tarihli sözleşme fiyatıdır; spot anlık teslim fiyatıdır.</dd>
@@ -159,11 +203,14 @@
   </details>
 
   <h3 class="h3">Hakkında</h3>
-  <p class="sub">Veriler hafta içi 08:45, 10:33, 12:45, 14:33, 16:38, 20:33 ve 22:15'te (TSİ) zamanlanmış seanslarca güncellenir. Kaynaklar: Yahoo Finance, Harem Altın, doviz.com ve haber kaynakları. Fiyatlar canlı akmaz; her kartta veri saati yazar. Araştırma ve takip amaçlıdır; yatırım tavsiyesi değildir.</p>
+  <p class="sub" id="about-text">Android uygulaması verileri doğrudan telefondan çeker ve analizi telefonda yapar; bilgisayar gerekmez. Kaynaklar: Yahoo Finance (fiyat ve grafik), Truncgil (yerel altın), Google Haberler (başlıklar), Forex Factory (takvim). Fiyatlar canlı akmaz; her kartta veri saati yazar. Araştırma ve takip amaçlıdır; yatırım tavsiyesi değildir.</p>
   <p class="sub" id="ver"></p>
 </aside>
 
 <script src="config.js"></script>
+<script src="engine/ta_engine.js"></script>
+<script src="analysis.js"></script>
+<script src="chart.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,26 +1,32 @@
 # GMI Piyasa
 
-Kişisel piyasa takip uygulaması: altın, döviz, emtia ve borsalar için fiyatlar, teknik görünüm, gündem, uyarılar ve tahmin karnesi. Araştırma ve takip amaçlıdır; yatırım tavsiyesi değildir.
+Kişisel piyasa takip uygulaması: altın, döviz, emtia, borsalar ve faiz. Araştırma ve takip amaçlıdır; yatırım tavsiyesi değildir.
 
-## Nasıl çalışır
-- Uygulama bir PWA'dır: GitHub Pages'te yayımlanır, Android'de Chrome ile normal bir uygulama gibi yüklenir.
-- Veriler `data/app_data.json` dosyasındadır. Bu dosyayı hafta içi 08:45, 10:33, 12:45, 14:33, 16:38, 20:33 ve 22:15'te (TSİ) zamanlanmış Claude seansları günceller.
-- Dosya değişince `.github/workflows/notify.yml` çalışır. Yeni bir uyarı ya da tam seans özeti varsa telefona bildirim gönderir.
+## Android uygulaması (asıl sürüm)
 
-## Kurulum (bir kez)
-1. **Settings → Pages:** Source "Deploy from a branch", Branch `main`, klasör `/ (root)`.
-2. Telefonda Chrome ile `https://emreby.github.io/pysa_rmtcntrl/` adresini açın. Menüden (⋮) **Uygulamayı yükle**'ye dokunun.
-3. Uygulamada ⚙ **Ayarlar → Bildirimleri aç**, izin verin ve **Kodu kopyala**'ya dokunun. Bildirim anahtarları telefonunuzda üretilir.
-4. **Settings → Secrets and variables → Actions → New repository secret**: ad `PUSH_CONFIG`, değer kopyaladığınız kod.
-5. **Actions → Telefona bildirim → Run workflow** ile deneme bildirimi gönderin.
+İndirme: [gmi-piyasa.apk](https://github.com/emreby/pysa_rmtcntrl/releases/download/uygulama/gmi-piyasa.apk) (her değişiklikte GitHub'da otomatik derlenir; sürüm sayfası: Releases → "uygulama").
+
+- **Veri ve analiz telefonda:** Uygulama açılınca fiyatları ve grafik verisini doğrudan telefondan çeker (Yahoo Finance, Truncgil, Google Haberler başlıkları, Forex Factory takvimi). Göstergeler, destek/direnç ve sinyaller telefonda hesaplanır. Bilgisayar gerekmez.
+- **Teknik grafikler:** Mum grafiği, SMA 20/50/200, Bollinger bandı, destek/direnç çizgileri, RSI ve MACD; günlük, 4 saatlik ve 1 saatlik.
+- **Teknik sinyaller:** Göstergelerin oylamasından kurala göre GÜÇLÜ AL / AL / NÖTR / SAT / GÜÇLÜ SAT. Sinyaller kesin yön ya da fiyat hedefi değildir; geçmiş isabetleri Karne sekmesinde tutulur.
+- **Arka plan kontrolü:** Uygulama kapalıyken telefon yaklaşık 15 dakikada bir (Android izin verdikçe) fiyatları kontrol eder; eşik aşılırsa ya da son analizin destek/direnç seviyesi kırılırsa bildirim gösterir.
+
+### Kurulum
+1. Telefonda APK bağlantısını açıp dosyayı indirin.
+2. Açın; "bilinmeyen kaynaklardan yükleme" izni istenirse bu kez için izin verin ve **Yükle**'ye dokunun.
+3. Uygulama bildirim izni ister; izin verin.
+4. ⚙ Ayarlar → **Pil kısıtlamasını kaldır** → GMI Piyasa için "Kısıtlama yok" (bazı telefonlarda arka plan kontrolü için gerekir).
+
+## Web sürümü
+
+https://emreby.github.io/pysa_rmtcntrl/ — `data/app_data.json` dosyasını okur; artık otomatik güncellenmez.
 
 ## Dosyalar
-| Dosya | Görev |
-|---|---|
-| `index.html`, `app.css`, `app.js`, `config.js` | Uygulama |
-| `sw.js` | Çevrimdışı çalışma ve bildirimler |
-| `manifest.webmanifest`, `icons/` | Uygulama adı ve simgeleri |
-| `data/app_data.json` | Piyasa verisi (seanslarca güncellenir) |
-| `scripts/notify.mjs`, `.github/workflows/notify.yml` | Bildirim gönderimi |
 
-Adresi kimseyle paylaşmayın: veri kaynaklarının koşulları kişisel kullanım içindir.
+- `index.html`, `app.js`, `app.css`: arayüz
+- `analysis.js`: telefonda veri toplama, teknik analiz ve sinyaller
+- `chart.js`: teknik grafikler
+- `engine/ta_engine.js`: gösterge motoru
+- `android/`: Android kabuğu ve arka plan kontrolü (WorkManager)
+- `.github/workflows/android.yml`: APK derleme ve yayınlama
+- `engine/pipeline.py`, `.github/workflows/gmi.yml`: sunucu tarafı akış (zamanlaması kapalı; Yahoo, GitHub sunucularını engelliyor)

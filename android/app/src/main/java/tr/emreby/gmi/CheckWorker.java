@@ -15,6 +15,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -160,18 +161,23 @@ public class CheckWorker extends Worker {
         out.add(new A(key, asset, title, detail));
     }
 
-    static void levelCheck(List<A> out, Set<String> seen, JSONObject lv, String key, String asset, Q q, String today, int dp, String unit) {
-        if (lv == null || !fresh(q, today)) return;
-        JSONObject l = lv.optJSONObject(key);
-        if (l == null) return;
+    /** Son analizin destek/direnç seviyesi kırıldı mı? AL/SAT sinyalini bozan kırılımları ayrıca belirtir. */
+    static void levelCheck(List<A> out, Set<String> seen, JSONObject l, String key, Q q, String today) {
+        if (l == null || q == null || !fresh(q, today)) return;
+        String asset = l.optString("name", key);
+        int dp = l.optInt("dp", 2);
+        String unit = l.optString("unit", "");
+        String u = unit.isEmpty() ? "" : " " + unit;
+        String code = l.optString("code", "");
+        boolean al = code.equals("AL") || code.equals("GAL"), sat = code.equals("SAT") || code.equals("GSAT");
         double s1 = l.optDouble("s1", Double.NaN), r1 = l.optDouble("r1", Double.NaN);
         String when = l.optString("asof", "son analiz");
         if (!Double.isNaN(s1) && q.price < s1)
-            add(out, seen, key + "-s1-" + s1, asset, "Destek " + n(s1, dp) + unit + " kırıldı",
-                    asset + " " + n(q.price, dp) + unit + " · seviye " + when + " analizinden (" + l.optString("s1_note", "") + ")");
+            add(out, seen, key + "-s1-" + s1, asset, (al ? "AL sinyali bozuldu: destek " : "Destek ") + n(s1, dp) + u + " kırıldı",
+                    asset + " " + n(q.price, dp) + u + " · seviye " + when + " analizinden (" + l.optString("s1_note", "") + ")");
         if (!Double.isNaN(r1) && q.price > r1)
-            add(out, seen, key + "-r1-" + r1, asset, "Direnç " + n(r1, dp) + unit + " aşıldı",
-                    asset + " " + n(q.price, dp) + unit + " · seviye " + when + " analizinden (" + l.optString("r1_note", "") + ")");
+            add(out, seen, key + "-r1-" + r1, asset, (sat ? "SAT sinyali bozuldu: direnç " : "Direnç ") + n(r1, dp) + u + " aşıldı",
+                    asset + " " + n(q.price, dp) + u + " · seviye " + when + " analizinden (" + l.optString("r1_note", "") + ")");
     }
 
     @NonNull
@@ -219,8 +225,28 @@ public class CheckWorker extends Worker {
             }
             if (!Double.isNaN(gramChg) && Math.abs(gramChg) >= 1.5)
                 add(alerts, seen, "gram-yuzde" + sgn(gramChg), "Gram altın", "Günlük " + pct(gramChg), "Gram altın " + n(gramPx, 2) + " TL (" + gramSrc + "); eşik ±%1,5");
-            levelCheck(alerts, seen, lv, "GOLD_FUT", "Ons altın", gold, today, 1, " $");
-            levelCheck(alerts, seen, lv, "USDTRY", "USD/TRY", usd, today, 4, "");
+            Map<String, Q> got = new HashMap<>();
+            got.put("GOLD_FUT", gold);
+            got.put("USDTRY", usd);
+            got.put("BRENT", brent);
+            got.put("XU100", bist);
+            JSONArray lvKeys = lv != null ? lv.names() : null;
+            if (lvKeys != null) {
+                for (int i = 0; i < lvKeys.length() && i < 10; i++) {
+                    String key = lvKeys.getString(i);
+                    JSONObject l = lv.optJSONObject(key);
+                    if (l == null) continue;
+                    Q q = got.get(key);
+                    if (q == null) {
+                        String sym = l.optString("sym", "");
+                        if (sym.isEmpty()) continue;
+                        q = l.optBoolean("fx", false) ? fx(sym) : daily(sym);
+                        got.put(key, q);
+                        if (q.err != null) errs.put(q.err);
+                    }
+                    levelCheck(alerts, seen, l, key, q, today);
+                }
+            }
             if (usd.ok() && Math.abs(usd.chg) >= 0.5)
                 add(alerts, seen, "usdtry-yuzde" + sgn(usd.chg), "USD/TRY", "Günlük " + pct(usd.chg), "USD/TRY " + n(usd.price, 4) + " (NY kapanışına göre); eşik ±%0,5");
             if (fresh(brent, today) && Math.abs(brent.chg) >= 3)
