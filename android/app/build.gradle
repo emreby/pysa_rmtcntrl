@@ -1,0 +1,57 @@
+plugins {
+    id 'com.android.application'
+}
+
+def vc = (project.findProperty('vc') ?: '1').toString().toInteger()
+
+android {
+    namespace 'tr.emreby.gmi'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'tr.emreby.gmi'
+        minSdk 24
+        targetSdk 35
+        versionCode vc
+        versionName "2.0.${vc}"
+    }
+
+    // İmza anahtarı depoda tutulmaz: GitHub derlemesi anahtarı kendi önbelleğinde saklar (GMI_KEYSTORE).
+    // Aynı anahtar korundukça yeni sürüm eskisinin üzerine kurulabilir.
+    def ksPath = System.getenv('GMI_KEYSTORE')
+    def ksPass = System.getenv('GMI_KEYSTORE_PASS') ?: ''
+    def hasKs = ksPath != null && new File(ksPath).exists()
+    signingConfigs {
+        gmi {
+            if (hasKs) {
+                storeFile file(ksPath)
+                storePassword ksPass
+                keyAlias 'gmi'
+                keyPassword ksPass
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig hasKs ? signingConfigs.gmi : signingConfigs.debug
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.work:work-runtime:2.9.1'
+    implementation 'androidx.webkit:webkit:1.12.1'
+}

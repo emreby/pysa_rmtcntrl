@@ -1,8 +1,8 @@
 name: GMI otomatik
 # Her 15 dakikada fiyat ve eşik kontrolü; 08:45, 12:45, 16:38 ve 22:15'ten sonraki ilk çalışmada tam seans (TSİ, hafta içi).
 on:
-  schedule:
-    - cron: '*/15 * * * 1-5'
+  # Zamanlama kapalı: Yahoo, GitHub sunucularından gelen istekleri engelliyor (HTTP 429).
+  # Fiyat kontrolü artık telefondaki Android uygulamasında yapılıyor. Elle çalıştırmak için: Actions → Run workflow.
   workflow_dispatch:
     inputs:
       mod:
@@ -13,9 +13,6 @@ on:
         description: 'Tam seans için: SABAH / OGLEN / OGLEDEN_SONRA / AKSAM'
         required: false
         default: ''
-  push:
-    branches: [main]
-    paths: ['engine/**', '.github/workflows/gmi.yml']
 permissions:
   contents: write
 concurrency:
@@ -49,7 +46,7 @@ jobs:
         run: |
           git config user.name "GMI otomatik"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data state raporlar
+          git add -A data state raporlar
           if git diff --cached --quiet; then echo "degisti=0" >> "$GITHUB_OUTPUT"; echo "değişiklik yok"; exit 0; fi
           git commit -q -m "Veri: ${{ steps.k.outputs.mod }} ${{ steps.k.outputs.seans }} $(TZ=Europe/Istanbul date '+%Y-%m-%d %H:%M')"
           for i in 1 2 3; do git push -q origin HEAD:main && break; git pull -q --rebase origin main; done

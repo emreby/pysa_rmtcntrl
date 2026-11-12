@@ -2,3 +2,9 @@ work/
 node_modules/
 out/
 __pycache__/
+android/app/src/main/assets/
+android/.gradle/
+android/app/build/
+android/build/
+*.keystore
+*.p12
