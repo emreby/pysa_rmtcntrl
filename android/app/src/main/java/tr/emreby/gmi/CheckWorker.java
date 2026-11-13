@@ -161,7 +161,7 @@ public class CheckWorker extends Worker {
         out.add(new A(key, asset, title, detail));
     }
 
-    /** Son analizin destek/direnç seviyesi kırıldı mı? AL/SAT sinyalini bozan kırılımları ayrıca belirtir. */
+    /** Son analizin destek/direnç seviyesi kırıldı mı? Yükseliş/düşüş eğilimini bozan kırılımları ayrıca belirtir. */
     static void levelCheck(List<A> out, Set<String> seen, JSONObject l, String key, Q q, String today) {
         if (l == null || q == null || !fresh(q, today)) return;
         String asset = l.optString("name", key);
@@ -173,10 +173,10 @@ public class CheckWorker extends Worker {
         double s1 = l.optDouble("s1", Double.NaN), r1 = l.optDouble("r1", Double.NaN);
         String when = l.optString("asof", "son analiz");
         if (!Double.isNaN(s1) && q.price < s1)
-            add(out, seen, key + "-s1-" + s1, asset, (al ? "AL sinyali bozuldu: destek " : "Destek ") + n(s1, dp) + u + " kırıldı",
+            add(out, seen, key + "-s1-" + s1, asset, (al ? "Yükseliş eğilimi bozuldu: destek " : "Destek ") + n(s1, dp) + u + " kırıldı",
                     asset + " " + n(q.price, dp) + u + " · seviye " + when + " analizinden (" + l.optString("s1_note", "") + ")");
         if (!Double.isNaN(r1) && q.price > r1)
-            add(out, seen, key + "-r1-" + r1, asset, (sat ? "SAT sinyali bozuldu: direnç " : "Direnç ") + n(r1, dp) + u + " aşıldı",
+            add(out, seen, key + "-r1-" + r1, asset, (sat ? "Düşüş eğilimi bozuldu: direnç " : "Direnç ") + n(r1, dp) + u + " aşıldı",
                     asset + " " + n(q.price, dp) + u + " · seviye " + when + " analizinden (" + l.optString("r1_note", "") + ")");
     }
 

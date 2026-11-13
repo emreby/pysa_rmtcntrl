@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var CFG = window.GMI_CONFIG || {};
-  var VERSION = '2.2.0';
+  var VERSION = '2.3.0';
   var NATIVE = window.GMI_NATIVE || null;
   var GA = window.GMIA || null;
   var USE_PHONE = !!(NATIVE && GA);
@@ -27,7 +27,7 @@
     return f.format(v).replace('-', '−');
   }
   function sign(v) { return v > 0 ? '+' : (v < 0 ? '−' : ''); }
-  function pct(v) { return (v == null || !isFinite(v)) ? '—' : sign(v) + '%' + num(Math.abs(v), 2); }
+  function pct(v, dp) { return (v == null || !isFinite(v)) ? '—' : sign(v) + '%' + num(Math.abs(v), dp == null ? 2 : dp); }
   function bp(v) { return (v == null || !isFinite(v)) ? '—' : sign(v) + num(Math.abs(v), 1) + ' bp'; }
   function dir(v) { return (v == null || !isFinite(v) || Math.abs(v) < 0.005) ? 'flat' : (v > 0 ? 'up' : 'down'); }
   function when(s) {
@@ -55,6 +55,7 @@
           $('btn-refresh').classList.remove('spin');
           render();
           if (chartState.key && !$('chart-sheet').hidden) drawChart();
+          runBacktest(false);
         });
       return;
     }
@@ -88,7 +89,7 @@
       $('m-updated').textContent = 'Veri alınamadı. İnternet bağlantınızı kontrol edip yenileyin.';
       return;
     }
-    renderHeader(); renderStrip(); renderMarketYorum(); renderAlerts(); renderPrices(); renderGold(); renderIller(); renderSignals(); renderTech(); renderAgenda(); renderPerf(); renderBanner();
+    renderHeader(); renderStrip(); renderMarketYorum(); renderAlerts(); renderPrices(); renderGold(); renderSpot(); renderMakas(); renderIller(); renderSignals(); renderTech(); renderAgenda(); renderPerf(); renderBt(); renderBanner();
   }
 
   function status() { return rows('status')[0] || {}; }
@@ -182,9 +183,11 @@
       var c = el('div', 'card');
       c.append(el('div', 'pname', r.label));
       c.append(el('div', 'pval pval-sm', (r.bid != null ? num(r.bid, 2) + ' / ' + num(r.ask, 2) : num(r.value, 2)) + ' TL'));
-      var diff = r.metric === 'THEO' ? 'referans' : 'teorikten fark ' + pct(r.diff_bid_pct) + (r.diff_ask_pct != null ? ' / ' + pct(r.diff_ask_pct) : '');
+      var diff = r.metric === 'THEO' ? 'referans (vadeli ons ile)' : (r.metric === 'THEO_SPOT' ? 'vadeli ons ile hesaplanandan fark ' + pct(r.diff_ask_pct)
+        : 'teorikten fark ' + pct(r.diff_bid_pct) + (r.diff_ask_pct != null ? ' / ' + pct(r.diff_ask_pct) : ''));
       c.append(el('div', 'pchg flat', diff));
-      c.append(el('div', 'pmeta', (r.time || '') + (r.spread_pct != null ? ' · makas %' + num(r.spread_pct, 2) : '')));
+      c.append(el('div', 'pmeta', (r.time || '') + (r.spread_pct != null ? ' · alış-satış farkı %' + num(r.spread_pct, 2) : '')));
+      if (r.metric === 'RETAIL' && r.spread_pct != null && r.spread_pct < 0.2) c.append(el('div', 'pmeta', 'Serbest piyasa (toptan) fiyatı; banka ve kuyumcu farkı daha geniştir.'));
       cards.append(c);
     });
     var tb = clear($('coins').tBodies[0]);
@@ -261,7 +264,16 @@
   }
 
   function scoreTxt(v) { return v == null ? '—' : sign(v) + Math.abs(v); }
-  function sigBadge(code, label) { return el('span', 'sig ' + (SIG_CLS[code] || 'sg-veri'), label || code || '—'); }
+  function sigBadge(code, label, short) {
+    var map = GA && (short ? GA.SIG_SHORT : GA.SIG_LABEL);
+    return el('span', 'sig ' + (SIG_CLS[code] || 'sg-veri'), (map && map[code]) || label || code || '—');
+  }
+  function btFor(key) { var d = GA && GA.backtestData ? GA.backtestData() : null; return d && d.assets ? d.assets[key] || null : null; }
+  function spotLine(x) {
+    var s = x && x.spot;
+    if (!s || s.price == null) return '';
+    return 'Spot ' + num(s.price, x.dp) + ' $ (' + (s.time || '—') + ') · vadeli farkı ' + (s.diff >= 0 ? '+' : '−') + num(Math.abs(s.diff), x.dp) + ' $ (' + pct(s.diffPct) + ')';
+  }
   function statFor(code) {
     if (!GA || !GA.signalStats) return null;
     var b = GA.signalStats().by[code];
@@ -277,7 +289,7 @@
       var x = list.filter(function (r) { return r.key === k; })[0];
       if (!x) return;
       var b = el('button', 'chip'); b.type = 'button';
-      b.append(el('span', 'chip-n', x.name.replace(/ \(.*\)$/, '')), sigBadge(x.code, x.label));
+      b.append(el('span', 'chip-n', x.name.replace(/ \(.*\)$/, '')), sigBadge(x.code, x.label, true));
       b.addEventListener('click', function () { openChart(k); });
       box.append(b);
     });
@@ -294,7 +306,11 @@
       var sy = YZ ? YZ.short(x) : '';
       c.append(top, line, el('div', 'pmeta', 'Günlük skor ' + scoreTxt(x.ds) + '/' + x.dn + ' · kısa vade ' + (x.ss == null ? '—' : scoreTxt(x.ss) + '/' + x.sn) + (sy || !x.trend ? '' : ' · ' + x.trend)));
       if (sy) c.append(el('div', 'sig-yorum', sy));
-      if (x.invalid) c.append(el('div', 'pmeta', (x.code === 'NOTR' ? 'Yön için: ' : 'Geçersiz kılan: ') + x.invalid));
+      var spl = spotLine(x);
+      if (spl) c.append(el('div', 'pmeta', spl));
+      var hi = YZ && YZ.history ? YZ.history(x, btFor(x.key)) : null;
+      if (hi) c.append(el('div', 'sig-hist ' + hi.ton, hi.kart));
+      if (x.invalid) c.append(el('div', 'pmeta', (x.code === 'NOTR' ? 'Yön için: ' : 'Bu görünümü bozan: ') + x.invalid));
       if (x.notes && x.notes.length) c.append(el('div', 'sig-note', x.notes[0]));
       if (x.stale) c.append(el('div', 'sig-note', 'Güncel veri alınamadı; önbellekteki veriyle hesaplandı.'));
       c.addEventListener('click', function () { openChart(x.key); });
@@ -319,7 +335,8 @@
     var a = (GA && GA.assets && GA.assets[key]) || {};
     var name = (sig && sig.name) || (t && t.name) || a.name || key, dp = sig ? sig.dp : (t ? t.dp : (a.dp || 2)), unit = sig ? sig.unit : (a.unit || '');
     $('ch-name').textContent = name;
-    $('ch-sub').textContent = sig ? num(sig.price, dp) + (unit ? ' ' + unit : '') + ' · ' + pct(sig.chg) + ' · teknik sinyal: ' + sig.label : '';
+    $('ch-sub').textContent = sig ? num(sig.price, dp) + (unit ? ' ' + unit : '') + ' · ' + pct(sig.chg) + ' · eğilim: ' + ((GA && GA.SIG_LABEL[sig.code]) || sig.label).toLowerCase() +
+      (sig.spot && sig.spot.price != null ? ' · spot ' + num(sig.spot.price, dp) + ' $' : '') : '';
     document.querySelectorAll('#ch-tf button').forEach(function (b) {
       var tf = b.getAttribute('data-tf'); b.setAttribute('aria-pressed', tf === chartState.tf ? 'true' : 'false');
       b.disabled = tf !== 'G' && !a.intra;
@@ -364,8 +381,9 @@
     box.append(ul);
   }
   function renderAssetYorum(x) {
-    var box = clear($('ch-yorum'));
-    var y = YZ && x ? YZ.asset(x, yorumCtx()) : null;
+    var box = clear($('ch-yorum')), ctx = yorumCtx();
+    if (x) { ctx.bt = btFor(x.key); ctx.makas = makasGet(); }
+    var y = YZ && x ? YZ.asset(x, ctx) : null;
     box.hidden = !y;
     if (!y) return;
     box.append(el('h3', 'yorum-h', 'Uygulamanın yorumu (günlük görünüm)'));
@@ -392,7 +410,8 @@
   function renderSigDetail(x) {
     var box = clear($('ch-sig'));
     if (!x) return;
-    var h = el('div', 'sig-top'); h.append(el('strong', null, 'Teknik sinyal'), sigBadge(x.code, x.label)); box.append(h);
+    var h = el('div', 'sig-top'); h.append(el('strong', null, 'Eğilim etiketi'), sigBadge(x.code, x.label)); box.append(h);
+    box.append(el('p', 'sub', 'Etiket, göstergelerin bugünkü durumunu özetler. Fiyatın bundan sonra o yöne gideceği anlamına gelmez; al-sat emri değildir.'));
     box.append(el('p', 'sub', 'Günlük skor ' + scoreTxt(x.ds) + '/' + x.dn + ' (yedi göstergenin oyu), kısa vade ' + (x.ss == null ? 'hesaplanamadı' : scoreTxt(x.ss) + '/' + x.sn + ' (4 saat ve 1 saat)') +
       (x.trend ? ' · ' + x.trend : '') + '. Göstergelerin oyu:'));
     var ul = el('ul', 'votes');
@@ -400,9 +419,128 @@
     box.append(ul);
     (x.notes || []).forEach(function (n) { box.append(el('p', 'sig-note', n)); });
     var st = statFor(x.code);
-    box.append(el('p', 'sub', st ? 'Bu sinyal türünün bu telefondaki geçmiş isabeti: %' + num(st.rate, 0) + ' (' + st.n + ' değerlendirme, ' + st.flat + ' yatay).'
-      : 'Bu sinyal türü için henüz yeterli geçmiş değerlendirme yok.'));
-    box.append(el('p', 'sub', 'Sinyal göstergelerden kurala göre üretilir; kesin yön ya da fiyat hedefi değildir, yatırım tavsiyesi değildir. Karar sizindir.'));
+    box.append(el('p', 'sub', st ? 'Bu etiketin bu telefondaki karnesi: %' + num(st.rate, 0) + ' isabet (' + st.n + ' değerlendirme, ' + st.flat + ' yatay).'
+      : 'Bu etiket için bu telefonda henüz değerlendirilmiş kayıt yok.'));
+    renderBtDetail(box, x);
+    box.append(el('p', 'sub', 'Etiketler göstergelerden kurala göre üretilir; kesin yön ya da fiyat hedefi değildir, yatırım tavsiyesi değildir. Karar sizindir.'));
+  }
+  var BT_ROWS = [['GAL', 'Güçlü yükseliş'], ['AL', 'Yükseliş'], ['NOTR', 'Belirsiz'], ['SAT', 'Düşüş'], ['GSAT', 'Güçlü düşüş'], ['ALL', 'Herhangi bir gün']];
+  function renderBtDetail(box, x) {
+    box.append(el('h4', 'yorum-sh', 'Geçmiş testi'));
+    var bt = btFor(x.key);
+    if (!bt) {
+      box.append(el('p', 'sub', USE_PHONE ? 'Geçmiş testi henüz hazır değil. Uygulama açıkken arka planda 10 yıllık veriyle hesaplanır; birkaç dakika sürebilir.' : 'Geçmiş testi Android uygulamasında hesaplanır.'));
+      return;
+    }
+    var dc = GA.btCode(x.ds);
+    box.append(el('p', 'sub', 'Uygulamanın günlük kuralı ' + bt.bas + ' ile ' + bt.son + ' arasındaki her güne uygulandı. Geçmiş 4 saatlik ve 1 saatlik veri olmadığı için yalnız günlük göstergeler kullanıldı. Tablo, her etiketten sonra fiyatın ne sıklıkla yükseldiğini gösterir.'));
+    var tbl = el('table', 'tbl bt-tbl'), th = el('thead'), hr = el('tr');
+    ['Etiket (günlük)', '1 hafta sonra yükseldi', '1 ay sonra yükseldi', 'Ayrı dönem'].forEach(function (t) { hr.append(el('th', null, t)); });
+    th.append(hr); tbl.append(th);
+    var tb = el('tbody');
+    BT_ROWS.forEach(function (r) {
+      var a = bt.h5[r[0]], b = bt.h20[r[0]];
+      if (!a) return;
+      var tr = el('tr', r[0] === dc ? 'bt-now' : (r[0] === 'ALL' ? 'bt-base' : ''));
+      tr.append(td(r[1] + (r[0] === dc ? ' (bugün)' : '')), td('%' + num(a.up, 0)), td(b ? '%' + num(b.up, 0) : '—'), td(a.ep == null ? '—' : String(a.ep)));
+      tb.append(tr);
+    });
+    tbl.append(tb);
+    var w = el('div', 'tw'); w.append(tbl); box.append(w);
+    var hi = YZ && YZ.history ? YZ.history(x, bt) : null;
+    if (hi) box.append(el('p', 'item-detail', hi.verdict));
+    if (bt.st) {
+      var a1 = GA.btNet(bt.st, 0.0025), a2 = GA.btNet(bt.st, 0.01), mk = makasGet(), ul = el('ul', 'yorum-list');
+      ul.append(el('li', null, 'İşlem başına %0,25 maliyetle: etikete göre girip çıkmak ' + pct(a1.sinyal, 0) + ', hiç satmadan tutmak ' + pct(a1.alTut, 0) + '.'));
+      ul.append(el('li', null, 'İşlem başına %1 maliyetle: etikete göre girip çıkmak ' + pct(a2.sinyal, 0) + ', hiç satmadan tutmak ' + pct(a2.alTut, 0) + '.'));
+      if (mk && x.key === 'GRAM') {
+        var a3 = GA.btNet(bt.st, mk.kayip / 200);
+        ul.append(el('li', null, 'Senin girdiğin alış-satış farkıyla (işlem başına %' + num(mk.kayip / 2, 2) + '): etikete göre ' + pct(a3.sinyal, 0) + ', tutmak ' + pct(a3.alTut, 0) + '.'));
+      }
+      if (bt.st2y) { var b1 = GA.btNet(bt.st2y, 0.0025); ul.append(el('li', null, 'Son 2 yıl, %0,25 maliyetle: etikete göre ' + pct(b1.sinyal, 0) + ', tutmak ' + pct(b1.alTut, 0) + '.')); }
+      ul.append(el('li', null, a1.islem + ' alım ya da satım; günlerin %' + num(bt.st.gun, 0) + ' kadarında elde tutuluyor.'));
+      box.append(el('p', 'sub', 'Etikete göre girip çıkmak: yükseliş eğiliminde al, düşüş eğiliminde sat, belirsizde bekle (başlangıç ' + bt.st.bas + ').'));
+      box.append(ul);
+    }
+    box.append(el('p', 'sub', 'Geçmiş sonuçlar geleceği garanti etmez. Nakitte beklerken faiz geliri hesaba katılmadı. Son hesaplama: ' + ((GA.backtestData() || {}).asof_trt || '—') + '.'));
+  }
+
+  /* ---------- geçmiş testi: arka planda haftada bir ---------- */
+  var btState = { running: false, done: 0, total: 0 };
+  function runBacktest(force) {
+    if (!USE_PHONE || !GA.backtest || btState.running) return;
+    var cur = GA.backtestData();
+    if (!force && cur && (Date.now() / 1000 - cur.asof) < 7 * 86400) { renderBt(); return; }
+    btState.running = true; btState.done = 0; renderBt();
+    GA.backtest(true, function (d, t) { btState.done = d; btState.total = t; renderBt(); })
+      .catch(function () { /* yok say */ })
+      .then(function () {
+        btState.running = false;
+        renderBt(); renderSignals();
+        if (chartState.key && !$('chart-sheet').hidden) drawChart();
+      });
+  }
+  function renderBt() {
+    var meta = $('bt-meta'), tb = clear($('bt-table').tBodies[0]), sum = $('bt-sum'), btn = $('btn-bt');
+    var d = GA && GA.backtestData ? GA.backtestData() : null;
+    btn.hidden = !USE_PHONE; btn.disabled = btState.running;
+    btn.textContent = btState.running ? 'Hesaplanıyor… ' + btState.done + '/' + (btState.total || '…') : 'Geçmiş testini şimdi yenile';
+    if (!d || !d.assets) {
+      meta.textContent = USE_PHONE ? (btState.running ? '10 yıllık günlük veri indiriliyor ve test ediliyor.' : 'Geçmiş testi henüz yapılmadı.') : 'Geçmiş testi Android uygulamasında hesaplanır.';
+      sum.textContent = ''; $('bt-wrap').hidden = true; return;
+    }
+    $('bt-wrap').hidden = false;
+    meta.textContent = 'Son hesaplama: ' + (d.asof_trt || '—') + ' · 10 yıllık günlük veri · haftada bir kendiliğinden yenilenir.' + (d.missing && d.missing.length ? ' Alınamayan: ' + d.missing.join(', ') + '.' : '');
+    var better = 0, notBetter = 0, opposite = 0;
+    rows('signals').forEach(function (x) {
+      var bt = d.assets[x.key], hi = YZ && YZ.history ? YZ.history(x, bt) : null;
+      if (!bt) return;
+      if (hi) { if (hi.ton === 'up') better++; else if (hi.ton === 'down') opposite++; else if (hi.edge != null && hi.kisa !== 'örnek az') notBetter++; }
+      var tr = el('tr'), sc = el('td'); sc.append(sigBadge(GA.btCode(x.ds), null, true));
+      tr.append(td(x.name.replace(/ \(.*\)$/, '')), sc, td(hi ? '%' + num(hi.up, 0) : '—'), td(hi ? '%' + num(hi.base, 0) : '—'), td(hi ? hi.kisa : '—', hi ? hi.ton : ''));
+      tb.append(tr);
+    });
+    sum.textContent = 'Bugün yön gösteren günlük görünümlerden ' + better + ' tanesi geçmişte yönü rastgele bir günden daha sık doğru göstermiş; ' + notBetter + ' tanesi göstermemiş' +
+      (opposite ? ', ' + opposite + ' tanesinden sonra fiyat daha sık ters yöne gitmiş' : '') + '.';
+  }
+
+  /* ---------- alış-satış farkı (kullanıcının kendi bankası ya da kuyumcusu) ---------- */
+  var MK = 'gmi-makas';
+  function makasGet() { try { return JSON.parse(localStorage.getItem(MK) || 'null'); } catch (e) { return null; } }
+  function parseTr(v) {
+    v = String(v || '').trim().replace(/\s/g, '').replace(/[₺TL]/gi, '');
+    if (!v) return null;
+    if (v.indexOf(',') >= 0) v = v.replace(/\./g, '').replace(',', '.');
+    else if (/\.\d{3}$/.test(v)) v = v.replace(/\./g, '');
+    var x = parseFloat(v);
+    return isFinite(x) ? x : null;
+  }
+  function makasHesapla() {
+    var a = parseTr($('mk-alis').value), b = parseTr($('mk-satis').value), out = $('mk-sonuc');
+    if (!a || !b || a <= 0 || b <= 0) { out.textContent = 'İki fiyatı da yaz (ör. 6.250 ve 6.400).'; return; }
+    if (b < a) { out.textContent = 'Satış fiyatı alış fiyatından düşük olamaz; yerlerini kontrol et.'; return; }
+    if ((b - a) / b > 0.2) { out.textContent = 'Fark %20\'den büyük çıktı; fiyatları kontrol et.'; return; }
+    var d = new Date(), m = { alis: a, satis: b, kayip: 100 * (b - a) / b, esik: 100 * (b / a - 1), tarih: d.getDate() + ' ' + ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'][d.getMonth()] };
+    try { localStorage.setItem(MK, JSON.stringify(m)); } catch (e) { /* yok say */ }
+    renderMakas();
+  }
+  function renderMakas() {
+    var m = makasGet(), out = $('mk-sonuc');
+    if (!m) { out.textContent = ''; return; }
+    if (!$('mk-alis').value) $('mk-alis').value = num(m.alis, 2);
+    if (!$('mk-satis').value) $('mk-satis').value = num(m.satis, 2);
+    var g = rows('signals').filter(function (x) { return x.key === 'GRAM'; })[0], atr = g && g.atr && g.price ? 100 * g.atr / g.price : null;
+    out.textContent = 'Fark %' + num(m.kayip, 2) + ' (' + m.tarih + '). Bu fiyatlarla gram altını alıp hemen satarsan %' + num(m.kayip, 2) + ' kaybedersin; başa baş için fiyatın en az %' +
+      num(m.esik, 2) + ' yükselmesi gerekir.' + (atr ? ' Gram altının ortalama günlük hareketi %' + num(atr, 1) + '.' : '') + ' Bu bilgi gram altın yorumunda ve geçmiş testinde kullanılır.';
+  }
+  function renderSpot() {
+    var box = clear($('spot-card')), x = rows('signals').filter(function (r) { return r.key === 'GOLD_FUT'; })[0];
+    box.hidden = !(x && x.spot);
+    if (!x || !x.spot) return;
+    box.append(el('div', 'pname', 'Ons altın: vadeli ve spot'));
+    box.append(el('div', 'pval pval-sm', 'Spot ' + num(x.spot.price, 1) + ' $ · Vadeli ' + num(x.price, 1) + ' $'));
+    box.append(el('div', 'pmeta', 'Fark ' + (x.spot.diff >= 0 ? '+' : '−') + num(Math.abs(x.spot.diff), 1) + ' $ (' + pct(x.spot.diffPct) + ') · spot: ' + x.spot.source + ', ' + (x.spot.time || '—')));
+    box.append(el('p', 'sub', 'Kuyumcu ve döviz sitelerindeki ons fiyatı spot fiyattır. Grafikler ve teorik gram, geçmiş verisi olan COMEX vadeli kontratından hesaplanır; vadeli genelde spotun biraz üstündedir ve Yahoo\'dan yaklaşık 10 dakika gecikmeli gelebilir.'));
   }
   function scoreCls(v) { return v == null ? '' : (v >= 3 ? 'up' : (v <= -3 ? 'down' : 'flat')); }
 
@@ -452,7 +590,7 @@
     var tb = clear($('tech').tBodies[0]);
     rows('tech').slice().sort(function (a, b) { return a.order - b.order; }).forEach(function (r) {
       var tr = el('tr');
-      var sc = el('td'); if (r.signal) sc.append(sigBadge(r.signal_code, r.signal)); else sc.textContent = '—';
+      var sc = el('td'); if (r.signal) sc.append(sigBadge(r.signal_code, r.signal, true)); else sc.textContent = '—';
       tr.append(td(r.name), sc, td(scoreTxt(r.daily_score), scoreCls(r.daily_score)), td(scoreTxt(r.short_score), scoreCls(r.short_score)),
         td(num(r.rsi, 1)), td(num(r.s1, r.dp)), td(num(r.r1, r.dp)), td(r.trend || '—', 'wrap'));
       tr.className = 'tap'; tr.addEventListener('click', function () { openChart(r.key); });
@@ -504,7 +642,7 @@
       var by = GA.signalStats().by, codes = ['GAL', 'AL', 'SAT', 'GSAT'].filter(function (c) { return by[c]; });
       if (codes.length) {
         var tbl = el('table', 'tbl'), th = el('thead'), hr = el('tr');
-        ['Sinyal', 'İsabet', 'Iska', 'Yatay', 'İsabet oranı'].forEach(function (h) { hr.append(el('th', null, h)); });
+        ['Etiket', 'İsabet', 'Iska', 'Yatay', 'İsabet oranı'].forEach(function (h) { hr.append(el('th', null, h)); });
         th.append(hr); tbl.append(th);
         var tb2 = el('tbody');
         codes.forEach(function (c) {
@@ -694,6 +832,8 @@
   $('ch-close').addEventListener('click', closeChart);
   $('chart-bg').addEventListener('click', closeChart);
   $('ch-terms').addEventListener('click', openTerms);
+  $('btn-bt').addEventListener('click', function () { runBacktest(true); });
+  $('mk-hesapla').addEventListener('click', makasHesapla);
   document.querySelectorAll('#ch-tf button').forEach(function (b) { b.addEventListener('click', function () { if (b.disabled) return; chartState.tf = b.getAttribute('data-tf'); drawChart(); }); });
   document.querySelectorAll('#ch-span button').forEach(function (b) { b.addEventListener('click', function () { chartState.span = +b.getAttribute('data-span'); drawChart(); }); });
   $('ver').textContent = 'Sürüm ' + VERSION;

@@ -8,7 +8,9 @@ Kişisel piyasa takip uygulaması: altın, döviz, emtia, borsalar ve faiz. Ara�
 
 - **Veri ve analiz telefonda:** Uygulama açılınca fiyatları ve grafik verisini doğrudan telefondan çeker (Yahoo Finance, Truncgil, Google Haberler başlıkları, Forex Factory takvimi). Göstergeler, destek/direnç ve sinyaller telefonda hesaplanır. Bilgisayar gerekmez.
 - **Teknik grafikler:** Mum grafiği, SMA 20/50/200, Bollinger bandı, destek/direnç çizgileri, RSI ve MACD; günlük, 4 saatlik ve 1 saatlik.
-- **Teknik sinyaller:** Göstergelerin oylamasından kurala göre GÜÇLÜ AL / AL / NÖTR / SAT / GÜÇLÜ SAT. Sinyaller kesin yön ya da fiyat hedefi değildir; geçmiş isabetleri Karne sekmesinde tutulur.
+- **Eğilim etiketleri:** Göstergelerin oylamasından kurala göre güçlü yükseliş / yükseliş / yön belirsiz / düşüş / güçlü düşüş eğilimi. Etiketler tahmin ya da al-sat emri değildir.
+- **Geçmiş testi:** Günlük kural son 10 yılın her gününe uygulanır (haftada bir, telefonda); her etiketten 1 hafta ve 1 ay sonra fiyatın ne sıklıkla yükseldiği ve etikete göre girip çıkmanın maliyetli sonucu gösterilir. 13 Kasım 2026 testinde etiketler yönü rastgele bir günden daha iyi göstermedi.
+- **Spot ons ve alış-satış farkı:** Vadeli onsun yanında spot ons (gold-api.com); bankanın ya da kuyumcunun gram fiyatlarıyla başa baş hesabı.
 - **Otomatik yorum:** Her varlık için grafik altında sade Türkçe yorum (eğilim, RSI, MACD, ADX, Bollinger, ATR, seviyeler; gram altında ons ve kur payı) ve seçili zaman dilimine göre grafik okuması; Piyasa sekmesinde "Günün yorumu". Yorumlar göstergelerden sabit kurallarla yazılır; tahmin ya da tavsiye değildir.
 - **İller sekmesi:** Kuyumcular odalarının fiyat yayını. Yayımlayan odaların siteleri otomatik veri çekmeyi yasakladığı ya da giriş istediği için fiyatlar uygulamaya alınmaz; resmî sayfa tarayıcıda açılır. Liste `iller.js` içinde.
 - **Arka plan kontrolü:** Uygulama kapalıyken telefon yaklaşık 15 dakikada bir (Android izin verdikçe) fiyatları kontrol eder; eşik aşılırsa ya da son analizin destek/direnç seviyesi kırılırsa bildirim gösterir.

@@ -47,8 +47,19 @@
 
   <section class="view" id="v-altin" data-view="altin" hidden>
     <h2 class="h2">Gram altın: teorik ve piyasa</h2>
+    <div class="card spot-card" id="spot-card" hidden></div>
     <p class="sub">Teorik gram = ons × USD/TRY ÷ 31,1035. Yüzdeler teorik fiyata göre farktır (alış / satış).</p>
     <div class="grid" id="gram-cards"></div>
+    <div class="card makas-card">
+      <div class="pname">Alış-satış farkı hesaplayıcı</div>
+      <p class="sub">Bankanın ya da kuyumcunun gram altın için gösterdiği iki fiyatı yaz. Uygulama, kısa vadeli bir işlemin başa baş noktasını hesaplar ve gram altın yorumunda ve geçmiş testinde kullanır. Bilgi yalnız bu telefonda saklanır.</p>
+      <div class="makas-row">
+        <label>Alış fiyatı (senden alırken verdiği)<input id="mk-alis" inputmode="decimal" autocomplete="off" placeholder="ör. 6.250"></label>
+        <label>Satış fiyatı (sana satarken istediği)<input id="mk-satis" inputmode="decimal" autocomplete="off" placeholder="ör. 6.400"></label>
+      </div>
+      <button type="button" class="btn btn-sm" id="mk-hesapla">Hesapla ve kaydet</button>
+      <p class="item-detail" id="mk-sonuc"></p>
+    </div>
     <h2 class="h2">Sikkeler ve primler</h2>
     <p class="sub">Teorik değer = has altın içeriği (brüt ağırlık × 0,9166) × teorik gram.</p>
     <div class="tw"><table class="tbl" id="coins">
@@ -87,14 +98,14 @@
   </section>
 
   <section class="view" id="v-teknik" data-view="teknik" hidden>
-    <h2 class="h2">Teknik sinyaller</h2>
-    <p class="sub">Göstergelere göre kural tabanlı sinyal: AL, SAT ya da NÖTR. Bir karta dokunun; grafik ve gerekçesi açılır. <b>Yatırım tavsiyesi değildir</b>: sinyaller sık yanılır, geçmiş isabetleri Karne sekmesindedir.</p>
+    <h2 class="h2">Eğilim etiketleri</h2>
+    <p class="sub">Göstergelerin bugünkü durumunun kural tabanlı özeti: yükseliş eğilimi, düşüş eğilimi ya da yön belirsiz. <b>Bir tahmin ya da al-sat emri değildir.</b> Her kartta, aynı etiketten sonra geçmişte fiyatın ne yaptığı yazar; çoğu etiket yönü rastgele bir günden daha iyi göstermiyor. Bir karta dokunun; grafik, yorum ve geçmiş testi açılır.</p>
     <div id="signals" class="sig-list"></div>
-    <p class="sub" id="signals-empty" hidden>Sinyaller Android uygulamasında, veriler telefonda hesaplandıktan sonra görünür.</p>
+    <p class="sub" id="signals-empty" hidden>Eğilim etiketleri Android uygulamasında, veriler telefonda hesaplandıktan sonra görünür.</p>
     <h2 class="h2">Teknik görünüm</h2>
     <p class="sub">Hesaplama: <span id="tech-asof">—</span>. Günlük skor yedi göstergenin oyudur (−7…+7): +3 ve üzeri pozitif, −3 ve altı negatif. Kısa vade skoru 4 saatlik ve 1 saatlik grafiklerden gelir (−6…+6).</p>
     <div class="tw"><table class="tbl" id="tech">
-      <thead><tr><th>Varlık</th><th>Sinyal</th><th>Günlük</th><th>Kısa vade</th><th>RSI</th><th>Destek 1</th><th>Direnç 1</th><th>Trend</th></tr></thead>
+      <thead><tr><th>Varlık</th><th>Eğilim</th><th>Günlük</th><th>Kısa vade</th><th>RSI</th><th>Destek 1</th><th>Direnç 1</th><th>Trend</th></tr></thead>
       <tbody></tbody>
     </table></div>
     <h2 class="h2">Senaryo eşikleri ve şu anki konum</h2>
@@ -115,10 +126,22 @@
   </section>
 
   <section class="view" id="v-karne" data-view="karne" hidden>
-    <h2 class="h2">Sinyaller ne kadar tuttu?</h2>
-    <p class="sub">Her AL ve SAT sinyali verildiği andaki fiyatla kaydedilir, 24–72 saat sonra uygulama açıldığında o anki fiyatla değerlendirilir. ±%0,25 içindeki hareket "yatay" sayılır.</p>
+    <h2 class="h2">Geçmiş testi: etiketler geçmişte tuttu mu?</h2>
+    <p class="sub">Uygulamanın günlük kuralı son 10 yılın her gününe uygulanır ve her etiketten 1 hafta sonra fiyatın ne yaptığı sayılır. "Herhangi bir gün" sütunu karşılaştırma içindir: bir etiket işe yarıyorsa, yükseliş etiketinden sonra fiyat herhangi bir günden daha sık yükselmeli, düşüş etiketinden sonra daha sık düşmelidir. Geçmiş sonuçlar geleceği garanti etmez.</p>
+    <p class="sub" id="bt-meta"></p>
+    <div id="bt-wrap" hidden>
+      <p class="item-detail" id="bt-sum"></p>
+      <div class="tw"><table class="tbl" id="bt-table">
+        <thead><tr><th>Varlık</th><th>Bugünkü günlük görünüm</th><th>Bu görünümden 1 hafta sonra yükseldi</th><th>Herhangi bir gün</th><th>Sonuç</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <button type="button" class="btn btn-ghost" id="btn-bt" hidden>Geçmiş testini şimdi yenile</button>
+
+    <h2 class="h2">Bu telefondaki karne</h2>
+    <p class="sub">Her yükseliş ve düşüş eğilimi etiketi verildiği andaki fiyatla kaydedilir, 24–72 saat sonra uygulama açıldığında o anki fiyatla değerlendirilir. ±%0,25 içindeki hareket "yatay" sayılır.</p>
     <div id="sig-stats"></div>
-    <p class="sub" id="perf-empty">Henüz değerlendirilmiş sinyal yok. İlk sonuçlar, sinyallerin verilmesinden en az bir gün sonra görünür.</p>
+    <p class="sub" id="perf-empty">Henüz değerlendirilmiş kayıt yok. İlk sonuçlar, etiketlerin verilmesinden en az bir gün sonra görünür.</p>
     <div id="perf-body" hidden>
       <div class="tiles">
         <div class="card"><div class="pname">Yön isabeti</div><div class="pval" id="p-rate">—</div><div class="pmeta">isabet ÷ (isabet + ıska)</div></div>
@@ -127,7 +150,7 @@
       </div>
       <h3 class="h3">Son değerlendirmeler</h3>
       <div class="tw"><table class="tbl" id="perf">
-        <thead><tr><th>Varlık</th><th>Verildi</th><th>Sinyal</th><th>O anki fiyat</th><th>Gerçekleşen</th><th>Değişim</th><th>Sonuç</th></tr></thead>
+        <thead><tr><th>Varlık</th><th>Verildi</th><th>Etiket</th><th>O anki fiyat</th><th>Gerçekleşen</th><th>Değişim</th><th>Sonuç</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
@@ -179,7 +202,7 @@
 
   <div id="native-only" hidden>
     <h3 class="h3">Arka plan kontrolü</h3>
-    <p class="sub">Uygulama kapalıyken telefon yaklaşık 15 dakikada bir fiyatları kontrol eder (Android izin verdikçe). Eşik aşılırsa ya da son analizin destek/direnç seviyesi kırılırsa bildirim gönderir. Tam analiz ve sinyaller, uygulamayı açtığınızda yenilenir.</p>
+    <p class="sub">Uygulama kapalıyken telefon yaklaşık 15 dakikada bir fiyatları kontrol eder (Android izin verdikçe). Eşik aşılırsa ya da son analizin destek/direnç seviyesi kırılırsa bildirim gönderir. Tam analiz ve eğilim etiketleri, uygulamayı açtığınızda yenilenir.</p>
     <label class="switch"><input type="checkbox" id="bg-toggle"> <span>Arka plan kontrolü açık</span></label>
     <p class="sub" id="bg-log">—</p>
     <div class="btn-row">
@@ -197,7 +220,7 @@
 
   <div id="web-only">
   <h3 class="h3">Android uygulaması</h3>
-  <p class="sub">Bu web sayfası artık otomatik güncellenmiyor. Güncel veri, grafikler, sinyaller ve arka plan bildirimleri için Android uygulamasını kurun: <a id="apk-link" href="#" rel="noopener">GMI Piyasa APK</a>.</p>
+  <p class="sub">Bu web sayfası artık otomatik güncellenmiyor. Güncel veri, grafikler, eğilim etiketleri ve arka plan bildirimleri için Android uygulamasını kurun: <a id="apk-link" href="#" rel="noopener">GMI Piyasa APK</a>.</p>
   <h3 class="h3">Uygulamayı yükle</h3>
   <p class="sub" id="install-text">Chrome menüsünden (⋮) <b>Uygulamayı yükle</b> ya da <b>Ana ekrana ekle</b> seçeneğine dokunun.</p>
   <button class="btn" id="btn-install" hidden>Uygulamayı yükle</button>
@@ -223,8 +246,11 @@
       <dt>Kısa vade skoru</dt><dd>4 saatlik ve 1 saatlik grafiklerde EMA 9/21, MACD ve RSI oyları.</dd>
       <dt>RSI</dt><dd>0–100 arası hız göstergesi. 70 üzeri aşırı alım, 30 altı aşırı satım bölgesi sayılır.</dd>
       <dt>ATR</dt><dd>Ortalama günlük fiyat aralığı; bir seviyenin fiyata yakın mı uzak mı olduğunu ölçer.</dd>
-      <dt>Teknik sinyal</dt><dd>GÜÇLÜ AL: günlük skor +5 ve üzeri, kısa vade +2 ve üzeri. AL: günlük +3 ve üzeri, kısa vade −1'in altında değil. SAT ve GÜÇLÜ SAT bunun tersidir; arası NÖTR. Sinyal bir kuralın sonucudur, kesin yön ya da fiyat hedefi değildir.</dd>
-      <dt>Geçersiz kılan seviye</dt><dd>Sinyalin dayandığı görünümü bozan seviye. Örneğin AL sinyalinde en yakın anlamlı desteğin altında günlük kapanış.</dd>
+      <dt>Eğilim etiketi</dt><dd>Güçlü yükseliş eğilimi: günlük skor +5 ve üzeri, kısa vade +2 ve üzeri. Yükseliş eğilimi: günlük +3 ve üzeri, kısa vade −1'in altında değil. Düşüş ve güçlü düşüş eğilimi bunun tersidir; arası "yön belirsiz". Etiket bugünkü durumu özetler; tahmin, kesin yön, fiyat hedefi ya da al-sat emri değildir.</dd>
+      <dt>Görünümü bozan seviye</dt><dd>Etiketin dayandığı görünümü bozan seviye. Örneğin yükseliş eğiliminde en yakın anlamlı desteğin altında günlük kapanış.</dd>
+      <dt>Geçmiş testi</dt><dd>Uygulamanın günlük kuralı son 10 yılın her gününe uygulanır; her etiketten 1 hafta ve 1 ay sonra fiyatın ne sıklıkla yükseldiği sayılır ve herhangi bir günle karşılaştırılır. Ardışık günler çoğunlukla aynı etiketi taşıdığı için "ayrı dönem" sayısı da verilir. Geçmiş sonuçlar geleceği garanti etmez.</dd>
+      <dt>Vadeli ve spot fiyat</dt><dd>Spot, bugün teslim fiyatıdır; kuyumcu ve döviz sitelerindeki ons fiyatı spottur. COMEX vadeli kontratı ileri bir tarihte teslimdir ve taşıma maliyeti (faiz) nedeniyle genelde spotun biraz üstünde işlem görür. Uygulamanın grafikleri geçmiş verisi olan vadeli kontrattan çizilir.</dd>
+      <dt>Alış-satış farkı (makas)</dt><dd>Satıcının senden alırken verdiği fiyat ile sana satarken istediği fiyat arasındaki fark. Bir altını alıp hemen satan kişi bu kadar kaybeder; kısa vadeli bir işlemin kâr bırakması için fiyatın en az bu fark kadar hareket etmesi gerekir.</dd>
       <dt>Teorik gram altın</dt><dd>Ons fiyatı × USD/TRY ÷ 31,1035 (bir ons 31,1035 gramdır). "Gram altın (teorik)" grafiği bu hesapla çizilir; kuyumcu ya da banka fiyatı değildir. Gerçek alış-satış fiyatları makas, işçilik ve vergi nedeniyle farklıdır.</dd>
       <dt>Mum</dt><dd>Bir zaman dilimindeki açılış, en yüksek, en düşük ve kapanış fiyatı. Yeşil mumda kapanış açılıştan yüksek, kırmızı mumda düşüktür.</dd>
       <dt>Zaman dilimi</dt><dd>Günlük grafikte her mum bir gün, 4 saatlikte dört saat, 1 saatlikte bir saattir. Göstergeler seçili zaman dilimine göre hesaplanır; bu yüzden aynı varlık günlükte yükselişte, saatlikte düşüşte görünebilir.</dd>

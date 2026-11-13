@@ -1,7 +1,8 @@
 /* GMI telefon içi analiz motoru.
    Android uygulamasında (GMI_NATIVE köprüsü) Yahoo Finance ve Truncgil verisini telefondan çeker;
-   göstergeleri, destek/direnci, skorları, kural tabanlı AL/SAT/NÖTR sinyallerini ve uygulama
-   verisini (data/app_data.json ile aynı biçim) telefonda üretir. Sayısal olasılık üretmez. */
+   göstergeleri, destek/direnci, skorları, kural tabanlı eğilim etiketlerini, geçmiş testini ve uygulama
+   verisini (data/app_data.json ile aynı biçim) telefonda üretir. Sayısal olasılık üretmez; geçmiş testi
+   yalnız geçmişte ne olduğunu sayar. Etiketler al-sat emri değildir. */
 (function () {
   'use strict';
   var NATIVE = window.GMI_NATIVE || null;
@@ -222,7 +223,9 @@
   }
 
   /* ---------------- sinyal ---------------- */
-  var SIG_LABEL = { GAL: 'GÜÇLÜ AL', AL: 'AL', NOTR: 'NÖTR', SAT: 'SAT', GSAT: 'GÜÇLÜ SAT', VERI: 'VERİ YETERSİZ' };
+  // Etiketler bir emir değil, göstergelerin bugünkü eğilim özetidir (kodlar karne uyumluluğu için aynı kaldı).
+  var SIG_LABEL = { GAL: 'Güçlü yükseliş eğilimi', AL: 'Yükseliş eğilimi', NOTR: 'Yön belirsiz', SAT: 'Düşüş eğilimi', GSAT: 'Güçlü düşüş eğilimi', VERI: 'Veri yetersiz' };
+  var SIG_SHORT = { GAL: 'Güçlü yükseliş', AL: 'Yükseliş', NOTR: 'Belirsiz', SAT: 'Düşüş', GSAT: 'Güçlü düşüş', VERI: 'Veri yok' };
   function signal(t) {
     var ds = t.ds, ss = t.ss, code;
     if (ds == null || t.dn < 6) code = 'VERI';
@@ -237,7 +240,7 @@
     if (ds != null && ds <= -3 && ss != null && ss >= 2) notes.push('Günlük görünüm negatif ama kısa vade pozitif: tepki yükselişi olabilir.');
     if ((code === 'AL' || code === 'GAL') && t.rsi != null && t.rsi >= 70) notes.push('RSI aşırı alım bölgesinde: geri çekilme riski yüksek.');
     if ((code === 'SAT' || code === 'GSAT') && t.rsi != null && t.rsi <= 30) notes.push('RSI aşırı satım bölgesinde: tepki yükselişi riski yüksek.');
-    if (t.adx != null && t.adx < 20) notes.push('ADX ' + tr(t.adx, 0) + ': trend zayıf, sinyaller daha sık yanılabilir.');
+    if (t.adx != null && t.adx < 20) notes.push('ADX ' + tr(t.adx, 0) + ': trend zayıf, eğilim etiketleri daha sık yanılabilir.');
     var inv = '';
     if (code === 'AL' || code === 'GAL') inv = s1 ? tr(s1.v, dp) + ' altında günlük kapanış' : '';
     else if (code === 'SAT' || code === 'GSAT') inv = r1 ? tr(r1.v, dp) + ' üstünde günlük kapanış' : '';
@@ -323,6 +326,20 @@
     } catch (e) { return null; }
   }
 
+  /* ---------------- spot ons ve gümüş (gold-api.com; ücretsiz, uygulamada kullanım serbest) ---------------- */
+  async function spotMetals() {
+    var out = {};
+    await Promise.all([['XAU', 'ons'], ['XAG', 'gumus']].map(async function (x) {
+      var r = await get('https://api.gold-api.com/price/' + x[0], 15000);
+      if (r.status !== 200) return;
+      try {
+        var j = JSON.parse(r.body), px = +j.price, at = Date.parse(j.updatedAt || '');
+        if (isNum(px) && px > 0) out[x[1]] = { price: px, time: isFinite(at) ? trt(Math.floor(at / 1000)).slice(11) : '', ts: isFinite(at) ? Math.floor(at / 1000) : null, source: 'gold-api.com' };
+      } catch (e) { /* yok say */ }
+    }));
+    return out.ons || out.gumus ? out : null;
+  }
+
   /* ---------------- gündem: haber başlıkları ve ekonomik takvim ---------------- */
   var QUERIES = ['altın fiyatları', 'dolar TL kur', 'TCMB faiz', 'Fed faiz Powell', 'petrol fiyatları Brent', 'Borsa İstanbul BIST'];
   var TAGS = [[/altın|\bons\b|gram|çeyrek|külçe/i, 'Altın'], [/gümüş/i, 'Gümüş'], [/dolar|\bkur\b|kurlar|döviz|türk lirası|euro/i, 'USD/TRY'],
@@ -404,7 +421,7 @@
     return log.filter(function (e) { return e.r && e.r !== 'süresi geçti'; }).sort(function (a, b) { return b.t - a.t; }).slice(0, 120).map(function (e) {
       var a = A[e.k] || { name: e.k, dp: 2 };
       return { id: e.t + '|' + e.k, issued: trt(e.t), key: e.k, name: a.name, dp: a.dp, ref_price: e.p, actual_price: e.a,
-        chg_pct: e.a && e.p ? 100 * (e.a / e.p - 1) : null, daily_bias: SIG_LABEL[e.c] || e.c, direction_hit: e.r,
+        chg_pct: e.a && e.p ? 100 * (e.a / e.p - 1) : null, daily_bias: SIG_SHORT[e.c] || e.c, direction_hit: e.r,
         level_notes: 'değerlendirme ' + trt(e.at || e.t), evaluate_at: '' };
     });
   }
@@ -429,8 +446,8 @@
       var t = T[k], L = prevLevels[k];
       if (!t || !L || !fresh(t) || !A[k]) return;
       var dp = A[k].dp, u = A[k].unit ? ' ' + A[k].unit : '', nm = L.name || A[k].name, al = L.code === 'AL' || L.code === 'GAL', sat = L.code === 'SAT' || L.code === 'GSAT';
-      if (L.s1 != null && t.price < L.s1) add(k + '-s1-' + L.s1, nm, (al ? 'AL sinyali bozuldu: destek ' : 'Destek ') + tr(L.s1, dp) + u + ' kırıldı', nm + ' ' + tr(t.price, dp) + u + ' · seviye ' + L.asof + ' analizinden (' + (L.s1_note || '') + ')');
-      if (L.r1 != null && t.price > L.r1) add(k + '-r1-' + L.r1, nm, (sat ? 'SAT sinyali bozuldu: direnç ' : 'Direnç ') + tr(L.r1, dp) + u + ' aşıldı', nm + ' ' + tr(t.price, dp) + u + ' · seviye ' + L.asof + ' analizinden (' + (L.r1_note || '') + ')');
+      if (L.s1 != null && t.price < L.s1) add(k + '-s1-' + L.s1, nm, (al ? 'Yükseliş eğilimi bozuldu: destek ' : 'Destek ') + tr(L.s1, dp) + u + ' kırıldı', nm + ' ' + tr(t.price, dp) + u + ' · seviye ' + L.asof + ' analizinden (' + (L.s1_note || '') + ')');
+      if (L.r1 != null && t.price > L.r1) add(k + '-r1-' + L.r1, nm, (sat ? 'Düşüş eğilimi bozuldu: direnç ' : 'Direnç ') + tr(L.r1, dp) + u + ' aşıldı', nm + ' ' + tr(t.price, dp) + u + ' · seviye ' + L.asof + ' analizinden (' + (L.r1_note || '') + ')');
     });
     if (u && u.chg != null && Math.abs(u.chg) >= 0.5) add('usdtry-yuzde' + (u.chg >= 0 ? '+' : '-'), 'USD/TRY', 'Günlük ' + pct(u.chg), 'USD/TRY ' + tr(u.price, 4) + ' (NY kapanışına göre); eşik ±%0,5');
     var b = T.BRENT; if (fresh(b) && b.chg != null && Math.abs(b.chg) >= 3) add('brent-yuzde' + (b.chg >= 0 ? '+' : '-'), 'Brent', 'Günlük ' + pct(b.chg), 'Brent ' + tr(b.price, 2) + ' $; eşik ±%3');
@@ -454,13 +471,14 @@
   var LAST = 'gmi-yerel-veri';
   async function run(onProgress) {
     if (!ENG) throw new Error('teknik motor yüklenemedi');
-    var ns = nowSec(), errs = [], done = 0, total = ASSETS.length + 3;
+    var ns = nowSec(), errs = [], done = 0, total = ASSETS.length + 4;
     var prog = function (msg) { if (onProgress) onProgress(++done, total, msg); };
     var S = {};
     var extras = Promise.all([
       truncgil().then(function (x) { prog('Truncgil'); return x; }),
       (NATIVE ? news() : Promise.resolve(null)).then(function (x) { prog('haberler'); return x; }).catch(function () { return null; }),
-      (NATIVE ? calendar() : Promise.resolve(null)).then(function (x) { prog('takvim'); return x; }).catch(function () { return null; })
+      (NATIVE ? calendar() : Promise.resolve(null)).then(function (x) { prog('takvim'); return x; }).catch(function () { return null; }),
+      spotMetals().then(function (x) { prog('spot ons'); return x; }).catch(function () { return null; })
     ]);
     await pool(ASSETS, 4, async function (a) {
       var d = await series(a[1], 'd'), h = null;
@@ -469,8 +487,9 @@
       S[a[0]] = { d: d, h: h };
       prog(A[a[0]].name);
     });
-    var ex = await extras, TG = ex[0], NEWS = ex[1], CAL = ex[2];
+    var ex = await extras, TG = ex[0], NEWS = ex[1], CAL = ex[2], SP = ex[3];
     if (!TG) errs.push('Truncgil (yerel altın) alınamadı');
+    if (!SP) errs.push('Spot ons (gold-api.com) alınamadı');
 
     // gram altın serisi
     if (S.GOLD_FUT && S.USDTRY && S.GOLD_FUT.d.bars && S.USDTRY.d.bars) {
@@ -516,6 +535,10 @@
         prev_close: null, chg_pct: TG.gram[2], chg_abs: null, chg_bp: null, kind: 'anlık', time: TG.time, source: 'Truncgil', session: 'telefon', ts_trt: now });
       gramChg = TG.gram[2]; gramPx = TG.gram[1];
     }
+    if (SP && SP.ons) prices.push({ key: 'ONS_SPOT', name: 'Ons altın (spot)', group: 'Altın ve metaller', order: 1.5, unit: '$', dp: 2, value: SP.ons.price, bid: null, ask: null,
+      prev_close: null, chg_pct: null, chg_abs: null, chg_bp: null, kind: 'anlık', time: SP.ons.time, source: 'gold-api.com', session: 'telefon', ts_trt: now });
+    if (SP && SP.gumus) prices.push({ key: 'GUMUS_SPOT', name: 'Gümüş (spot)', group: 'Altın ve metaller', order: 2.5, unit: '$', dp: 3, value: SP.gumus.price, bid: null, ask: null,
+      prev_close: null, chg_pct: null, chg_abs: null, chg_bp: null, kind: 'anlık', time: SP.gumus.time, source: 'gold-api.com', session: 'telefon', ts_trt: now });
     if (TG && TG.has) prices.push({ key: 'HAS_ALTIN_YEREL', name: 'HAS altın', group: 'Altın ve metaller', order: 15, unit: 'TL', dp: 2, value: null, bid: TG.has[0], ask: TG.has[1],
       prev_close: null, chg_pct: TG.has[2], chg_abs: null, chg_bp: null, kind: 'anlık', time: TG.time, source: 'Truncgil', session: 'telefon', ts_trt: now });
     prices.sort(function (a, b) { return a.order - b.order; });
@@ -524,6 +547,8 @@
     var gold = [];
     if (theo) gold.push({ metric: 'THEO', label: 'Teorik gram (COMEX vadeli ons × USD/TRY ÷ 31,1035)', unit: 'TL', value: theo, bid: null, ask: null, theo: theo,
       diff_bid_pct: null, diff_ask_pct: null, spread_pct: null, time: now.slice(11), source: 'hesap', order: 1 });
+    if (SP && SP.ons && u) gold.push({ metric: 'THEO_SPOT', label: 'Teorik gram (spot ons × USD/TRY ÷ 31,1035)', unit: 'TL', value: SP.ons.price * u.price / OZ, bid: null, ask: null,
+      theo: theo, diff_bid_pct: null, diff_ask_pct: theo ? 100 * (SP.ons.price / g.price - 1) : null, spread_pct: null, time: SP.ons.time, source: 'gold-api.com', order: 1.5 });
     [['has', 'HAS', 'HAS altın (Truncgil)', 2], ['gram', 'RETAIL', 'Gram altın (Truncgil)', 3]].forEach(function (x) {
       var p = TG && TG[x[0]];
       if (!p) return;
@@ -582,7 +607,8 @@
 
     // özet
     var parts = [];
-    if (g) parts.push('Ons ' + tr(g.price, 0) + ' $ (' + pct(g.chg, 1) + ')');
+    if (SP && SP.ons) parts.push('Ons ' + tr(SP.ons.price, 0) + ' $ (spot)');
+    else if (g) parts.push('Ons ' + tr(g.price, 0) + ' $ (vadeli, ' + pct(g.chg, 1) + ')');
     if (gramPx) parts.push('gram ' + tr(gramPx, 0) + ' TL');
     if (u) parts.push('USD/TRY ' + tr(u.price, 2) + ' (' + pct(u.chg, 2) + ')');
     if (T.XU100) parts.push('BIST ' + tr(T.XU100.price, 0) + ' (' + pct(T.XU100.chg, 1) + ')');
@@ -590,7 +616,7 @@
     var nAl = sig.filter(function (t) { return t.sig.code === 'AL' || t.sig.code === 'GAL'; }).length;
     var nSat = sig.filter(function (t) { return t.sig.code === 'SAT' || t.sig.code === 'GSAT'; }).length;
     var nToday = al.list.filter(function (a) { return String(a.time).slice(0, 10) === today; }).length;
-    var summary = parts.join(' · ') + ' · sinyaller: ' + nAl + ' AL, ' + nSat + ' SAT, ' + (sig.length - nAl - nSat) + ' NÖTR' + (nToday ? ' · bugün ' + nToday + ' uyarı' : '');
+    var summary = parts.join(' · ') + ' · eğilimler: ' + nAl + ' yükseliş, ' + nSat + ' düşüş, ' + (sig.length - nAl - nSat) + ' belirsiz' + (nToday ? ' · bugün ' + nToday + ' uyarı' : '');
 
     var data = {
       generated_at: new Date(ns * 1000).toISOString(), source: 'telefon',
@@ -601,12 +627,117 @@
         return { key: t.key, name: t.name, dp: t.dp, unit: A[t.key].unit, price: t.price, chg: t.chg, code: t.sig.code, label: t.sig.label, ds: t.ds, dn: t.dn, ss: t.ss, sn: t.sn,
           rsi: t.rsi, rsiState: t.rsiState, adx: t.adx, trend: t.trend, votes: t.votes, notes: t.sig.notes, invalid: t.sig.invalid,
           s1: t.msup[0] || null, s2: t.msup[1] || null, r1: t.mres[0] || null, r2: t.mres[1] || null, stale: t.stale, synthetic: t.key === 'GRAM',
-          atr: t.atr, ind: t.ind, time: t.time };
+          atr: t.atr, ind: t.ind, time: t.time, spot: spotFor(t, SP) };
       }),
+      spot: SP,
       errors: errs
     };
     lsSet(LAST, data);
     return data;
+  }
+
+  function spotFor(t, SP) {
+    var s = SP && (t.key === 'GOLD_FUT' ? SP.ons : (t.key === 'SILVER_FUT' ? SP.gumus : null));
+    if (!s || !isNum(t.price)) return null;
+    return { price: s.price, time: s.time, source: s.source, diff: t.price - s.price, diffPct: 100 * (t.price / s.price - 1) };
+  }
+
+  /* ---------------- geçmiş testi: 10 yıllık günlük veriyle, haftada bir ---------------- */
+  // Uygulamanın 7 oylu günlük kuralı geçmişin her gününe uygulanır. Geçmiş 4 saat/1 saat verisi olmadığı için
+  // kısa vade onayı testte yoktur. Seriler saklanmaz; yalnız sayımlar saklanır (birkaç KB).
+  var BT = 'gmi-gecmis-test', BT_V = 1, BT_AGE = 7 * 86400, BT_NOSTRAT = { VIX: 1, US10Y: 1 };
+  function btCode(ds) { return ds == null ? null : (ds >= 5 ? 'GAL' : (ds >= 3 ? 'AL' : (ds <= -5 ? 'GSAT' : (ds <= -3 ? 'SAT' : 'NOTR')))); }
+  function btCodes(b) {
+    var c = b.map(function (x) { return x.c; }), s50 = ENG.smaN(c, 50), s200 = ENG.smaN(c, 200), e9 = ENG.ema(c, 9), e21 = ENG.ema(c, 21);
+    var M = ENG.macd(c), R = ENG.rsi(c), X = ENG.adx(b), P = ENG.psar(b);
+    return b.map(function (x, i) {
+      var v = [gt(c[i], s50[i]), gt(c[i], s200[i]), gt(e9[i], e21[i]), gt(M.m[i], M.s[i]), gt(R[i], 50), P[i] ? P[i].up : null, gt(X.pdi[i], X.mdi[i])]
+        .filter(function (z) { return z !== null; });
+      if (v.length < 7) return null;
+      var ds = 0; v.forEach(function (z) { ds += z ? 1 : -1; });
+      return btCode(ds);
+    });
+  }
+  function btStats(b, cd, H, from) {
+    var g = { GAL: [], AL: [], NOTR: [], SAT: [], GSAT: [], ALL: [] }, ep = { GAL: 0, AL: 0, NOTR: 0, SAT: 0, GSAT: 0 };
+    for (var i = Math.max(from, 1); i < b.length - H; i++) {
+      var k = cd[i];
+      if (!k) continue;
+      var r = b[i + H].c / b[i].c - 1;
+      g[k].push(r); g.ALL.push(r);
+      if (cd[i - 1] !== k) ep[k]++;
+    }
+    var o = {};
+    Object.keys(g).forEach(function (k) {
+      var a = g[k];
+      if (!a.length) return;
+      var up = 0, sum = 0; a.forEach(function (r) { if (r > 0) up++; sum += r; });
+      o[k] = { n: a.length, ep: k === 'ALL' ? null : ep[k], up: Math.round(1000 * up / a.length) / 10, ort: Math.round(10000 * sum / a.length) / 100 };
+    });
+    return o;
+  }
+  // Yükseliş eğiliminde al, düşüş eğiliminde sat, belirsizde bekle. Maliyet sonradan (btNet) uygulanır.
+  function btStrat(b, cd, from) {
+    var pos = 0, gross = 1, ch = 0, inv = 0, n = 0;
+    for (var i = from; i < b.length - 1; i++) {
+      var k = cd[i], np = pos;
+      if (k === 'AL' || k === 'GAL') np = 1; else if (k === 'SAT' || k === 'GSAT') np = 0;
+      if (np !== pos) { ch++; pos = np; }
+      if (pos) { gross *= b[i + 1].c / b[i].c; inv++; }
+      n++;
+    }
+    return { g: gross, ch: ch, son: pos, gun: n ? Math.round(100 * inv / n) : null, bh: b[b.length - 1].c / b[from].c, bas: trt(b[from].t).slice(0, 10) };
+  }
+  // c: her alışta ve her satışta ödenen maliyet (oran). Açık pozisyon dönem sonunda satılmış sayılır.
+  function btNet(st, c) {
+    if (!st) return null;
+    return { sinyal: 100 * (st.g * Math.pow(1 - c, st.ch + (st.son ? 1 : 0)) - 1), alTut: 100 * (st.bh * (1 - c) * (1 - c) - 1), islem: st.ch + (st.son ? 1 : 0) };
+  }
+  async function btBars(sym, cache) {
+    if (cache[sym] !== undefined) return cache[sym];
+    var r = await chart(sym, '10y', '1d');
+    cache[sym] = r && r.bars && r.bars.length > 400 ? r : null;
+    await sleep(350);
+    return cache[sym];
+  }
+  async function btAsset(key, cache) {
+    var b = null;
+    if (key === 'GRAM') {
+      var g = await btBars(A.GOLD_FUT.sym, cache), u = await btBars(A.USDTRY.sym, cache);
+      b = g && u ? gramSeries(g, u, 'd') : null;
+    } else if (A[key]) {
+      var d = await btBars(A[key].sym, cache);
+      b = d && d.bars;
+    }
+    if (!b || b.length < 400) return null;
+    var cd = btCodes(b), from = -1;
+    for (var i = 0; i < cd.length; i++) { if (cd[i]) { from = i; break; } }
+    if (from < 0 || b.length - from < 250) return null;
+    var cut = b[b.length - 1].t - 730 * 86400, i2 = from;
+    while (i2 < b.length - 1 && b[i2].t < cut) i2++;
+    var o = { bas: trt(b[from].t).slice(0, 10), son: trt(b[b.length - 1].t).slice(0, 10), gun: b.length - from,
+      h5: btStats(b, cd, 5, from), h20: btStats(b, cd, 20, from), h5_2y: btStats(b, cd, 5, i2), bugun: cd[cd.length - 1] };
+    if (!BT_NOSTRAT[key]) { o.st = btStrat(b, cd, from); o.st2y = btStrat(b, cd, i2); }
+    return o;
+  }
+  var btBusy = null;
+  function backtestData() { var d = lsGet(BT); return d && d.v === BT_V ? d : null; }
+  function backtest(force, onProgress) {
+    var cur = backtestData();
+    if (!force && cur && nowSec() - cur.asof < BT_AGE) return Promise.resolve(cur);
+    if (btBusy) return btBusy;
+    btBusy = (async function () {
+      var cache = {}, res = {}, miss = [];
+      for (var i = 0; i < SIGNAL_KEYS.length; i++) {
+        var k = SIGNAL_KEYS[i];
+        try { var r = await btAsset(k, cache); if (r) res[k] = r; else miss.push(A[k] ? A[k].name : k); } catch (e) { miss.push(A[k] ? A[k].name : k); }
+        if (onProgress) onProgress(i + 1, SIGNAL_KEYS.length);
+      }
+      var out = { v: BT_V, asof: nowSec(), asof_trt: trt(nowSec()), assets: res, missing: miss };
+      if (Object.keys(res).length) lsSet(BT, out);
+      return Object.keys(res).length ? out : (cur || out);
+    })();
+    return btBusy.then(function (x) { btBusy = null; return x; }, function (e) { btBusy = null; throw e; });
   }
 
   function cached() { return lsGet(LAST); }
@@ -633,5 +764,6 @@
   }
   function techFor(key) { return MEM.tech[key] || null; }
 
-  window.GMIA = { native: !!NATIVE, run: run, cached: cached, seriesFor: seriesFor, techFor: techFor, signalStats: signalStats, assets: A, SIG_LABEL: SIG_LABEL };
+  window.GMIA = { native: !!NATIVE, run: run, cached: cached, seriesFor: seriesFor, techFor: techFor, signalStats: signalStats, assets: A, SIG_LABEL: SIG_LABEL, SIG_SHORT: SIG_SHORT,
+    backtest: backtest, backtestData: backtestData, btCode: btCode, btNet: btNet };
 })();

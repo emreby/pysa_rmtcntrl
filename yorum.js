@@ -29,13 +29,36 @@
   function D(x) { return (x && x.ind && x.ind.d) || {}; }
 
   var SIG_MEAN = {
-    GAL: 'Teknik sinyal GÜÇLÜ AL: günlük göstergelerin büyük çoğunluğu yükselişi gösteriyor, 4 saatlik ve 1 saatlik grafikler de aynı yönde.',
-    AL: 'Teknik sinyal AL: günlük göstergelerin çoğu yükselişi gösteriyor; kısa vadeli grafikler buna belirgin biçimde karşı değil.',
-    NOTR: 'Teknik sinyal NÖTR: göstergeler bölünmüş, belirgin bir yön yok.',
-    SAT: 'Teknik sinyal SAT: günlük göstergelerin çoğu düşüşü gösteriyor; kısa vadeli grafikler buna belirgin biçimde karşı değil.',
-    GSAT: 'Teknik sinyal GÜÇLÜ SAT: günlük göstergelerin büyük çoğunluğu düşüşü gösteriyor, 4 saatlik ve 1 saatlik grafikler de aynı yönde.',
+    GAL: 'Eğilim etiketi "güçlü yükseliş": günlük göstergelerin büyük çoğunluğu yukarı, 4 saatlik ve 1 saatlik grafikler de aynı yönde.',
+    AL: 'Eğilim etiketi "yükseliş": günlük göstergelerin çoğu yukarı; kısa vadeli grafikler buna belirgin biçimde karşı değil.',
+    NOTR: 'Eğilim etiketi "yön belirsiz": göstergeler bölünmüş.',
+    SAT: 'Eğilim etiketi "düşüş": günlük göstergelerin çoğu aşağı; kısa vadeli grafikler buna belirgin biçimde karşı değil.',
+    GSAT: 'Eğilim etiketi "güçlü düşüş": günlük göstergelerin büyük çoğunluğu aşağı, 4 saatlik ve 1 saatlik grafikler de aynı yönde.',
     VERI: 'Göstergeleri hesaplamak için yeterli veri yok.'
   };
+  var CODE_WORD = { GAL: 'güçlü yükseliş', AL: 'yükseliş', NOTR: 'yön belirsiz', SAT: 'düşüş', GSAT: 'güçlü düşüş' };
+  function btCode(ds) { return ds == null ? null : (ds >= 5 ? 'GAL' : (ds >= 3 ? 'AL' : (ds <= -5 ? 'GSAT' : (ds <= -3 ? 'SAT' : 'NOTR')))); }
+
+  /* ---------- geçmiş testi: bu durumdan sonra geçmişte ne oldu ---------- */
+  // bt: o varlığın geçmiş testi (analysis.js). Günlük skor bandına bakılır, çünkü geçmişte kısa vade verisi yok.
+  function history(x, bt) {
+    if (!x || !bt || !bt.h5 || x.ds == null) return null;
+    var dc = btCode(x.ds), s = bt.h5[dc], all = bt.h5.ALL;
+    if (!s || !all) return null;
+    var yr = bt.bas.slice(0, 4) + '–' + bt.son.slice(0, 4), up = s.up, dn = Math.round((100 - s.up) * 10) / 10;
+    var line = 'Geçmiş test (' + yr + '): günlük göstergeler bugünkü gibi "' + CODE_WORD[dc] + '" gösterdiğinde, 1 hafta sonra fiyat %' + n(up, 0) +
+      ' oranında yükselmiş, %' + n(dn, 0) + ' oranında düşmüş. Herhangi bir günde yükselme oranı %' + n(all.up, 0) + '.';
+    var edge = null, verdict, kisa, ton;
+    if (dc === 'AL' || dc === 'GAL') edge = up - all.up;
+    else if (dc === 'SAT' || dc === 'GSAT') edge = all.up - up;
+    if (s.ep != null && s.ep < 20) { verdict = 'Örnek az (' + s.ep + ' ayrı dönem); sonuç güvenilir değil.'; kisa = 'örnek az'; ton = 'flat'; }
+    else if (edge == null) { verdict = 'Yön belirsiz görünümün bir yön iddiası yok.'; kisa = 'yön iddiası yok'; ton = 'flat'; }
+    else if (edge >= 5) { verdict = 'Bu görünüm geçmişte yönü rastgele bir günden daha sık doğru göstermiş (fark ' + n(edge, 0) + ' puan). Bu, gelecekte de doğru çıkacağı anlamına gelmez.'; kisa = 'rastgele günden daha sık doğru'; ton = 'up'; }
+    else if (edge <= -5) { verdict = 'Bu görünümden sonra fiyat geçmişte rastgele bir güne göre daha sık ters yöne gitmiş.'; kisa = 'çoğu zaman ters yöne gitmiş'; ton = 'down'; }
+    else { verdict = 'Bu görünüm geçmişte yönü rastgele bir günden daha iyi göstermemiş.'; kisa = 'rastgele günden iyi değil'; ton = 'flat'; }
+    var kart = (dc === x.code ? 'Geçmişte bu etiketten 1 hafta sonra: ' : 'Geçmişte günlük göstergeler bugünkü gibi "' + CODE_WORD[dc] + '" gösterdiğinde, 1 hafta sonra: ') + '%' + n(up, 0) + ' yükseliş, %' + n(dn, 0) + ' düşüş (herhangi bir gün: %' + n(all.up, 0) + ' yükseliş). Sonuç: ' + kisa + '.';
+    return { dc: dc, line: line, verdict: verdict, kart: kart, kisa: kisa, ton: ton, edge: edge, ep: s.ep, n: s.n, up: up, dn: dn, base: all.up };
+  }
 
   /* ---------- ortak parçalar ---------- */
   // fiyatın üç ortalamaya göre konumu
@@ -121,7 +144,19 @@
       var ups = (x.votes || []).filter(function (v) { return v.ok; }).length, dns = (x.votes || []).length - ups;
       out.lead.push(SIG_MEAN[x.code] + ((x.votes || []).length ? ' Günlük oylama: yukarı ' + ups + ', aşağı ' + dns + '.' : ''));
     }
+    var hi = history(x, ctx.bt);
+    if (hi) out.lead.push(hi.line + ' ' + hi.verdict);
     if (x.stale) out.lead.push('Güncel veri alınamadı; yorum önbellekteki veriye dayanıyor.');
+
+    // vadeli ve spot fiyat (ons ve gümüş)
+    if (x.spot && isNum(x.spot.price)) {
+      var spo = x.spot, metal = x.key === 'SILVER_FUT' ? 'gümüş' : 'ons';
+      out.sections.push({ h: 'Vadeli ve spot fiyat', items: [
+        'Bu grafik COMEX vadeli kontratını gösterir. Spot ' + metal + ' şu an ' + P(x, spo.price) + ' (' + spo.source + (spo.time ? ', ' + spo.time : '') + '); vadeli fiyat bundan ' +
+          P(x, Math.abs(spo.diff)) + ' (' + absPct(spo.diffPct, 2) + ') ' + (spo.diff >= 0 ? 'yüksek.' : 'düşük.'),
+        'Vadeli kontrat taşıma maliyeti (faiz) nedeniyle genelde spot fiyatın biraz üstünde işlem görür. Kuyumcu ve döviz sitelerindeki ons fiyatı spot fiyattır. Vadeli fiyat Yahoo\'dan yaklaşık 10 dakika gecikmeli gelebilir; yüzde değişimler de her kaynakta kendi önceki kapanışına göre hesaplanır.'
+      ] });
+    }
 
     // gram altın: teorik ne demek, hareketin kaynağı
     if (x.key === 'GRAM') {
@@ -138,6 +173,12 @@
         gi.push('Bugünkü değişimin kaynağı: ons (dolar cinsinden) ' + sp(g.chg) + ', USD/TRY ' + sp(u.chg) + '. ' + src);
       }
       out.sections.push({ h: 'Gram altın nasıl hesaplanıyor?', items: gi });
+      var mk = ctx.makas, atrPct = isNum(x.atr) && x.atr > 0 ? 100 * x.atr / p : null, mi = [];
+      if (mk && isNum(mk.esik)) {
+        mi.push('Girdiğin alış-satış fiyatlarına göre (' + mk.tarih + ') aldığın yerde gram altın alınıp hemen satılınca %' + n(mk.kayip, 2) + ' kaybedilir; başa baş için fiyatın en az %' + n(mk.esik, 2) + ' yükselmesi gerekir.');
+        if (isNum(atrPct)) mi.push('Gram altının ortalama günlük hareketi %' + n(atrPct, 1) + '. ' + (atrPct < mk.esik ? 'Yani tek günlük ortalama bir hareket bu farkı karşılamıyor; kısa vadeli al-satta fark tek başına zarar ettirebilir.' : 'Ortalama bir gün bu farkı karşılayacak kadar hareket ediyor, ama yön önceden bilinmiyor.'));
+      } else mi.push('Kendi bankanın ya da kuyumcunun gram altın alış ve satış fiyatını Altın sekmesindeki hesaplayıcıya girersen, kısa vadeli bir işlemin başa baş noktası burada gösterilir. Truncgil\'in gram fiyatı serbest piyasa (toptan) fiyatıdır; banka ve kuyumcunun farkı daha geniştir.');
+      out.sections.push({ h: 'Alış-satış farkı', items: mi });
     }
 
     // eğilim
@@ -264,7 +305,7 @@
       else if (tfDn && dUp) out.push('Bu zaman dilimi aşağıyı gösteriyor ama günlük görünüm yukarı: büyük resimdeki yükseliş içinde kısa vadeli bir geri çekilme olabilir.');
       else if ((tfUp && dUp) || (tfDn && dDn)) out.push('Bu zaman dilimi günlük görünümle aynı yönde.');
     }
-    if (st.tf !== 'G') out.push('Üstteki sinyal etiketi günlük göstergelere ve 4 saat/1 saat oylarına göre verilir; yalnız bu grafikten çıkarılmaz.');
+    if (st.tf !== 'G') out.push('Üstteki eğilim etiketi günlük göstergelere ve 4 saat/1 saat oylarına göre verilir; yalnız bu grafikten çıkarılmaz.');
     return out;
   }
 
@@ -285,7 +326,8 @@
       } else t += '.';
       var ret = gold.filter(function (r) { return r.metric === 'RETAIL'; })[0];
       if (ret && isNum(ret.ask)) t += ' Piyasada gram satış ' + n(ret.ask, 0) + ' TL.';
-      t += ' Teknik sinyal ' + G.label + (G.trend ? ', eğilim: ' + G.trend.toLowerCase() : '') + '.';
+      t += ' Eğilim etiketi: ' + (CODE_WORD[G.code] || G.label) + '.';
+      if (data.spot && data.spot.ons) t += ' Spot ons ' + n(data.spot.ons.price, 1) + ' $' + (O && isNum(O.price) ? ' (vadeli ' + n(O.price, 1) + ' $)' : '') + '.';
       out.push(t);
     }
 
@@ -293,9 +335,9 @@
     var nAl = S.filter(function (x) { return x.code === 'AL' || x.code === 'GAL'; }).length;
     var nSat = S.filter(function (x) { return x.code === 'SAT' || x.code === 'GSAT'; }).length;
     var nN = S.length - nAl - nSat;
-    var tone = nSat >= 2 * Math.max(1, nAl) && nSat >= 6 ? 'Sinyallerin çoğu düşüş yönünde: genel bir zayıflık var.'
-      : (nAl >= 2 * Math.max(1, nSat) && nAl >= 6 ? 'Sinyallerin çoğu yükseliş yönünde: genel bir güçlenme var.' : 'Tablo karışık; tek yönlü bir hava yok.');
-    out.push('Teknik sinyaller: AL ' + nAl + ', SAT ' + nSat + ', NÖTR ' + nN + ' (' + S.length + ' varlık). ' + tone);
+    var tone = nSat >= 2 * Math.max(1, nAl) && nSat >= 6 ? 'Etiketlerin çoğu düşüş eğiliminde: göstergelerde genel bir zayıflık var.'
+      : (nAl >= 2 * Math.max(1, nSat) && nAl >= 6 ? 'Etiketlerin çoğu yükseliş eğiliminde: göstergelerde genel bir güçlenme var.' : 'Tablo karışık; tek yönlü bir hava yok.');
+    out.push('Eğilim etiketleri: yükseliş ' + nAl + ', düşüş ' + nSat + ', belirsiz ' + nN + ' (' + S.length + ' varlık). ' + tone + ' Etiketler bugünkü durumu özetler, sonrasını tahmin etmez.');
 
     // ortalamasına göre büyük hareketler
     var big = S.map(function (x) { return { x: x, m: dayMoveAtr(x) }; }).filter(function (z) { return isNum(z.m) && z.m >= 1; })
@@ -320,9 +362,9 @@
 
     // borsa
     var B = by.XU100;
-    if (B && isNum(B.price)) out.push('BIST 100 ' + n(B.price, 0) + ' (' + sp(B.chg) + '); teknik sinyal ' + B.label + (B.trend ? ', eğilim: ' + B.trend.toLowerCase() : '') + '.');
+    if (B && isNum(B.price)) out.push('BIST 100 ' + n(B.price, 0) + ' (' + sp(B.chg) + '); eğilim etiketi: ' + (CODE_WORD[B.code] || B.label) + (B.trend ? ' (' + B.trend.toLowerCase() + ')' : '') + '.');
     return out;
   }
 
-  window.GMIYORUM = { asset: asset, short: short, chart: chart, market: market, TF_NAME: TF_NAME };
+  window.GMIYORUM = { asset: asset, short: short, chart: chart, market: market, history: history, TF_NAME: TF_NAME, CODE_WORD: CODE_WORD };
 })();
