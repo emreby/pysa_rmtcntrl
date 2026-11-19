@@ -12,6 +12,7 @@ Kişisel piyasa takip uygulaması: altın, döviz, emtia, borsalar ve faiz. Ara�
 - **Geçmiş testi:** Günlük kural son 10 yılın her gününe uygulanır (haftada bir, telefonda); her etiketten 1 hafta ve 1 ay sonra fiyatın ne sıklıkla yükseldiği ve etikete göre girip çıkmanın maliyetli sonucu gösterilir. 13 Kasım 2026 testinde etiketler yönü rastgele bir günden daha iyi göstermedi.
 - **Spot ons ve alış-satış farkı:** Vadeli onsun yanında spot ons (gold-api.com); bankanın ya da kuyumcunun gram fiyatlarıyla başa baş hesabı.
 - **Otomatik yorum:** Her varlık için grafik altında sade Türkçe yorum (eğilim, RSI, MACD, ADX, Bollinger, ATR, seviyeler; gram altında ons ve kur payı) ve seçili zaman dilimine göre grafik okuması; Piyasa sekmesinde "Günün yorumu". Yorumlar göstergelerden sabit kurallarla yazılır; tahmin ya da tavsiye değildir.
+- **Yakınımdaki kuyumcular (İller sekmesi):** "Konumumu göster" ile konum haritada gösterilir, çevredeki kuyumcular numaralı işaretlerle ve uzaklık sırasıyla listelenir (yol tarifi, telefon, haritadaki çalışma saatleri), bulunulan ilin kuyumcular odası eşlenir. Veri OpenStreetMap'ten (Overpass; harita karoları tile.openstreetmap.org). Konum yalnız düğmeye basınca alınır, saklanmaz; servise ~100 m'ye yuvarlanmış konum gider. OSM gönüllü verisi olduğu için her dükkân kayıtlı olmayabilir.
 - **İller sekmesi:** Kuyumcular odalarının fiyat yayını. Yayımlayan odaların siteleri otomatik veri çekmeyi yasakladığı ya da giriş istediği için fiyatlar uygulamaya alınmaz; resmî sayfa tarayıcıda açılır. Liste `iller.js` içinde.
 - **Arka plan kontrolü:** Uygulama kapalıyken telefon yaklaşık 15 dakikada bir (Android izin verdikçe) fiyatları kontrol eder; eşik aşılırsa ya da son analizin destek/direnç seviyesi kırılırsa bildirim gösterir.
 
@@ -32,6 +33,8 @@ https://emreby.github.io/pysa_rmtcntrl/ — `data/app_data.json` dosyasını oku
 - `chart.js`: teknik grafikler
 - `yorum.js`: kural tabanlı yorum motoru
 - `iller.js`: kuyumcular odaları listesi (elle doğrulanır)
+- `harita.js`: bağımlılıksız OpenStreetMap karo haritası (kaydırma, yakınlaştırma, işaretler)
+- `yakin.js`: konum, Overpass ile yakındaki kuyumcular ve il/oda eşleşmesi
 - `engine/ta_engine.js`: gösterge motoru
 - `android/`: Android kabuğu ve arka plan kontrolü (WorkManager)
 - `.github/workflows/android.yml`: APK derleme ve yayınlama

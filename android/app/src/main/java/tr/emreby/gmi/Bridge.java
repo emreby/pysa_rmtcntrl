@@ -123,6 +123,17 @@ public class Bridge {
         });
     }
 
+    /** Konum izni "bir daha sorma" ile reddedildiyse izni yeniden açabilmek için uygulama ayarları. */
+    @JavascriptInterface
+    public void openAppSettings() {
+        main.post(() -> {
+            try {
+                act.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx.getPackageName())));
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
     @JavascriptInterface
     public String version() {
         return BuildConfig.VERSION_NAME;

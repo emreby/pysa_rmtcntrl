@@ -78,6 +78,27 @@
   </section>
 
   <section class="view" id="v-iller" data-view="iller" hidden>
+    <h2 class="h2">Yakınımdaki kuyumcular</h2>
+    <p class="sub">Konumunu haritada gösterir, çevredeki kuyumcuları işaretler ve bulunduğun ilin kuyumcular odasını bulur. Kuyumcular OpenStreetMap'ten gelir: gönüllülerin girdiği bir harita olduğu için her dükkân kayıtlı olmayabilir; saat ve telefon bilgileri eski olabilir.</p>
+    <div class="card yk-card">
+      <div class="btn-row">
+        <button class="btn" id="yk-btn" type="button">Konumumu göster</button>
+        <button class="btn btn-ghost" id="yk-ayar" type="button" hidden>Uygulama izinlerini aç</button>
+      </div>
+      <div class="seg" id="yk-r" role="group" aria-label="Arama alanı" hidden>
+        <button type="button" data-r="1000" aria-pressed="false">1 km</button>
+        <button type="button" data-r="3000" aria-pressed="true">3 km</button>
+        <button type="button" data-r="10000" aria-pressed="false">10 km</button>
+        <button type="button" data-r="25000" aria-pressed="false">25 km</button>
+      </div>
+      <p class="yk-durum" id="yk-durum" role="status" aria-live="polite"></p>
+      <div class="yk-map" id="yk-map" hidden></div>
+      <div class="btn-row" id="yk-links"></div>
+      <p class="pmeta">Konum yalnız bu düğmeye basınca alınır ve kaydedilmez. Arama için yaklaşık 100 metreye yuvarlanmış konum OpenStreetMap'in arama servisine (Overpass) gider; harita görüntüsü de OpenStreetMap'ten iner.</p>
+    </div>
+    <div id="yk-il"></div>
+    <ol class="list yk-list" id="yk-list"></ol>
+
     <h2 class="h2">İllere göre kuyumcu fiyatları</h2>
     <p class="sub">Kuyumcular odalarının üyelerine önerdiği "tavsiye edilen" perakende fiyatlar. Bu fiyatlar işçilik ve kâr payı içerdiği için ekrandaki has ya da serbest piyasa fiyatından yüksektir ve ilden ile değişir.</p>
     <div class="card iller-why">
@@ -279,6 +300,8 @@
 <script src="chart.js"></script>
 <script src="yorum.js"></script>
 <script src="iller.js"></script>
+<script src="harita.js"></script>
+<script src="yakin.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
