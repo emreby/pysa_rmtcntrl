@@ -12,7 +12,11 @@ Kişisel piyasa takip uygulaması: altın, döviz, emtia, borsalar ve faiz. Ara�
 - **Geçmiş testi:** Günlük kural son 10 yılın her gününe uygulanır (haftada bir, telefonda); her etiketten 1 hafta ve 1 ay sonra fiyatın ne sıklıkla yükseldiği ve etikete göre girip çıkmanın maliyetli sonucu gösterilir. 13 Kasım 2026 testinde etiketler yönü rastgele bir günden daha iyi göstermedi.
 - **Spot ons ve alış-satış farkı:** Vadeli onsun yanında spot ons (gold-api.com); bankanın ya da kuyumcunun gram fiyatlarıyla başa baş hesabı.
 - **Otomatik yorum:** Her varlık için grafik altında sade Türkçe yorum (eğilim, RSI, MACD, ADX, Bollinger, ATR, seviyeler; gram altında ons ve kur payı) ve seçili zaman dilimine göre grafik okuması; Piyasa sekmesinde "Günün yorumu". Yorumlar göstergelerden sabit kurallarla yazılır; tahmin ya da tavsiye değildir.
-- **Yakınımdaki kuyumcular (İller sekmesi):** "Konumumu göster" ile konum haritada gösterilir, çevredeki kuyumcular numaralı işaretlerle ve uzaklık sırasıyla listelenir (yol tarifi, telefon, haritadaki çalışma saatleri), bulunulan ilin kuyumcular odası eşlenir. Veri OpenStreetMap'ten (Overpass; harita karoları tile.openstreetmap.org). Konum yalnız düğmeye basınca alınır, saklanmaz; servise ~100 m'ye yuvarlanmış konum gider. OSM gönüllü verisi olduğu için her dükkân kayıtlı olmayabilir.
+- **Yakınımdaki kuyumcular (İller sekmesi):** "Konumumu göster" ile konum Google Haritalar'da (anahtarsız "Haritayı yerleştir" biçimi) gösterilir ve "kuyumcu" araması yapılır; "Google Haritalar'da aç" uygulamayı açar. İl ve ilçe telefonun adres servisinden (Android Geocoder) bulunur ve ilin kuyumcular odası eşlenir. Konum yalnız düğmeye basınca alınır, saklanmaz; Google'a ~100 m'ye yuvarlanmış konum gider.
+- **Kuyumcu fiyat defteri (İller):** Kuyumcunun alış/satış fiyatı, kayıt anındaki piyasa fiyatıyla birlikte saklanır; kuyumcuların farkı karşılaştırılır, gram kaydı alış-satış farkı hesabına aktarılabilir.
+- **Birikim sekmesi:** Birikim takibi (bugünkü değer piyasa alışıyla, kâr/zarar, fiyat defterine göre kuyumcuya satış tahmini), fiyat alarmları (arka planda ≈15 dk, uygulama açıkken anında; her alarm bir kez çalar) ve düzenli alım hesabı (Yahoo aylık verisi; TÜFE karşılaştırması TCMB'nin yayımladığı tablodan).
+- **Bildirim kontrol listesi ve yedekleme (Ayarlar):** izin, bildirim türü, pil kısıtlaması ve son arka plan kontrolü; telefon markasına göre ipucu; elle kontrol sonucu bildirim olarak gelir; günlük özet (isteğe bağlı). Yedek dosyası Android'in kaydetme ekranıyla alınır, geri yüklenir.
+- **Yedek veri kaynakları:** Dolar ve euro için serbest piyasa (Truncgil) satırları; Yahoo ve Truncgil alınamazsa TCMB gösterge kuru. Gram altın için vadeli ons ya da kur yoksa spot ons ve yedek kurla teorik gram. Arka plan alarmları aynı sırayı kullanır.
 - **İller sekmesi:** Kuyumcular odalarının fiyat yayını. Yayımlayan odaların siteleri otomatik veri çekmeyi yasakladığı ya da giriş istediği için fiyatlar uygulamaya alınmaz; resmî sayfa tarayıcıda açılır. Liste `iller.js` içinde.
 - **Arka plan kontrolü:** Uygulama kapalıyken telefon yaklaşık 15 dakikada bir (Android izin verdikçe) fiyatları kontrol eder; eşik aşılırsa ya da son analizin destek/direnç seviyesi kırılırsa bildirim gösterir.
 
@@ -33,8 +37,11 @@ https://emreby.github.io/pysa_rmtcntrl/ — `data/app_data.json` dosyasını oku
 - `chart.js`: teknik grafikler
 - `yorum.js`: kural tabanlı yorum motoru
 - `iller.js`: kuyumcular odaları listesi (elle doğrulanır)
-- `harita.js`: bağımlılıksız OpenStreetMap karo haritası (kaydırma, yakınlaştırma, işaretler)
-- `yakin.js`: konum, Overpass ile yakındaki kuyumcular ve il/oda eşleşmesi
+- `yakin.js`: konum, gömülü Google haritası, il/oda eşleşmesi
+- `birikim.js`: birikim takibi ve düzenli alım hesabı
+- `alarm.js`: fiyat alarmları
+- `defter.js`: kuyumcu fiyat defteri
+- `yedek.js`: yedek alma ve geri yükleme
 - `engine/ta_engine.js`: gösterge motoru
 - `android/`: Android kabuğu ve arka plan kontrolü (WorkManager)
 - `.github/workflows/android.yml`: APK derleme ve yayınlama

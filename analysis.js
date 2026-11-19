@@ -326,6 +326,18 @@
     } catch (e) { return null; }
   }
 
+  /* ---------------- TCMB gösterge kuru (yedek kaynak; günde bir kez yayımlanır) ---------------- */
+  async function tcmbKur() {
+    var r = await get('https://www.tcmb.gov.tr/kurlar/today.xml', 15000);
+    if (r.status !== 200) return null;
+    var out = {}, tarih = (/Tarih="([\d.]+)"/.exec(r.body) || [])[1] || '';
+    ['USD', 'EUR'].forEach(function (c) {
+      var m = new RegExp('CurrencyCode="' + c + '"[\\s\\S]*?<ForexBuying>([\\d.]+)</ForexBuying>[\\s\\S]*?<ForexSelling>([\\d.]+)</ForexSelling>').exec(r.body);
+      if (m) out[c.toLowerCase()] = [+m[1], +m[2]];
+    });
+    return out.usd || out.eur ? { source: 'TCMB', date: tarih, usd: out.usd || null, eur: out.eur || null } : null;
+  }
+
   /* ---------------- spot ons ve gümüş (gold-api.com; ücretsiz, uygulamada kullanım serbest) ---------------- */
   async function spotMetals() {
     var out = {};
@@ -526,10 +538,26 @@
         chg_pct: t.chg, chg_abs: chgAbs, chg_bp: t.key === 'US10Y' && chgAbs != null ? chgAbs * 100 : null, kind: kind + (t.stale ? ' (önbellek)' : ''),
         time: (t.time || '').slice(11), source: t.fx ? 'Yahoo Finance (NY kapanışına göre)' : 'Yahoo Finance', session: 'telefon', ts_trt: now });
     });
-    var g = T.GOLD_FUT, u = T.USDTRY, theo = (g && u) ? g.price * u.price / OZ : null;
+    // Serbest piyasa dolar ve euro (Truncgil). Yahoo kuru alınamazsa yedek de olur; o da yoksa TCMB gösterge kuru.
+    var TC = null;
+    if ((!T.USDTRY && !(TG && TG.usd)) || (!T.EURTRY && !(TG && TG.eur))) { try { TC = await tcmbKur(); } catch (e) { TC = null; } }
+    [['usd', 'USDTRY', 'Dolar', 20.5], ['eur', 'EURTRY', 'Euro', 21.5]].forEach(function (x) {
+      var p = TG && TG[x[0]], yok = !T[x[1]];
+      if (p) prices.push({ key: x[1] + '_YEREL', name: x[2] + ' (serbest piyasa)', group: 'Döviz', order: x[3], unit: 'TL', dp: 4, value: null, bid: p[0], ask: p[1],
+        prev_close: null, chg_pct: p[2], chg_abs: null, chg_bp: null, kind: 'anlık', time: TG.time, source: 'Truncgil' + (yok ? ' (Yahoo kuru alınamadı; yedek)' : ''), session: 'telefon', ts_trt: now });
+      else if (yok && TC && TC[x[0]]) prices.push({ key: x[1] + '_TCMB', name: x[2] + ' (TCMB gösterge kuru)', group: 'Döviz', order: x[3], unit: 'TL', dp: 4, value: null, bid: TC[x[0]][0], ask: TC[x[0]][1],
+        prev_close: null, chg_pct: null, chg_abs: null, chg_bp: null, kind: 'günlük', time: TC.date, source: 'TCMB (Yahoo ve Truncgil alınamadı; yedek)', session: 'telefon', ts_trt: now });
+    });
+    if (yokYahoo(T, 'USDTRY')) errs.push('USD/TRY Yahoo\'dan alınamadı; ' + (TG && TG.usd ? 'serbest piyasa kuru (Truncgil)' : (TC && TC.usd ? 'TCMB gösterge kuru' : 'yedek kaynak da alınamadı')) + ' gösteriliyor');
+    var g = T.GOLD_FUT, u = T.USDTRY;
+    // Yedek: vadeli ons yoksa spot ons; Yahoo kuru yoksa serbest piyasa ya da TCMB kuru
+    var gPx = g ? g.price : (SP && SP.ons ? SP.ons.price : null);
+    var uPx = u ? u.price : (TG && TG.usd ? (TG.usd[0] + TG.usd[1]) / 2 : (TC && TC.usd ? (TC.usd[0] + TC.usd[1]) / 2 : null));
+    var theo = (gPx && uPx) ? gPx * uPx / OZ : null, theoYedek = !(g && u);
     var gramChg = (g && u && g.chg != null && u.chg != null) ? ((1 + g.chg / 100) * (1 + u.chg / 100) - 1) * 100 : null, gramPx = theo;
     if (theo) prices.push({ key: 'GRAM_ALTIN_TEORIK', name: 'Gram altın (teorik)', group: 'Altın ve metaller', order: 12, unit: 'TL', dp: 2, value: theo, bid: null, ask: null,
-      prev_close: null, chg_pct: gramChg, chg_abs: null, chg_bp: null, kind: 'hesap', time: now.slice(11), source: 'hesap: COMEX vadeli ons × USD/TRY', session: 'telefon', ts_trt: now });
+      prev_close: null, chg_pct: gramChg, chg_abs: null, chg_bp: null, kind: 'hesap', time: now.slice(11),
+      source: theoYedek ? 'hesap (yedek kaynakla): ' + (g ? 'COMEX vadeli' : 'spot') + ' ons × ' + (u ? 'USD/TRY' : 'yedek dolar kuru') : 'hesap: COMEX vadeli ons × USD/TRY', session: 'telefon', ts_trt: now });
     if (TG && TG.gram) {
       prices.push({ key: 'GRAM_ALTIN_YEREL', name: 'Gram altın', group: 'Altın ve metaller', order: 13, unit: 'TL', dp: 2, value: null, bid: TG.gram[0], ask: TG.gram[1],
         prev_close: null, chg_pct: TG.gram[2], chg_abs: null, chg_bp: null, kind: 'anlık', time: TG.time, source: 'Truncgil', session: 'telefon', ts_trt: now });
@@ -547,8 +575,8 @@
     var gold = [];
     if (theo) gold.push({ metric: 'THEO', label: 'Teorik gram (COMEX vadeli ons × USD/TRY ÷ 31,1035)', unit: 'TL', value: theo, bid: null, ask: null, theo: theo,
       diff_bid_pct: null, diff_ask_pct: null, spread_pct: null, time: now.slice(11), source: 'hesap', order: 1 });
-    if (SP && SP.ons && u) gold.push({ metric: 'THEO_SPOT', label: 'Teorik gram (spot ons × USD/TRY ÷ 31,1035)', unit: 'TL', value: SP.ons.price * u.price / OZ, bid: null, ask: null,
-      theo: theo, diff_bid_pct: null, diff_ask_pct: theo ? 100 * (SP.ons.price / g.price - 1) : null, spread_pct: null, time: SP.ons.time, source: 'gold-api.com', order: 1.5 });
+    if (SP && SP.ons && uPx) gold.push({ metric: 'THEO_SPOT', label: 'Teorik gram (spot ons × USD/TRY ÷ 31,1035)', unit: 'TL', value: SP.ons.price * uPx / OZ, bid: null, ask: null,
+      theo: theo, diff_bid_pct: null, diff_ask_pct: g ? 100 * (SP.ons.price / g.price - 1) : null, spread_pct: null, time: SP.ons.time, source: 'gold-api.com', order: 1.5 });
     [['has', 'HAS', 'HAS altın (Truncgil)', 2], ['gram', 'RETAIL', 'Gram altın (Truncgil)', 3]].forEach(function (x) {
       var p = TG && TG[x[0]];
       if (!p) return;
@@ -630,11 +658,14 @@
           atr: t.atr, ind: t.ind, time: t.time, spot: spotFor(t, SP) };
       }),
       spot: SP,
+      local: TG || null,
       errors: errs
     };
     lsSet(LAST, data);
     return data;
   }
+
+  function yokYahoo(T, k) { return !T[k]; }
 
   function spotFor(t, SP) {
     var s = SP && (t.key === 'GOLD_FUT' ? SP.ons : (t.key === 'SILVER_FUT' ? SP.gumus : null));
@@ -764,6 +795,6 @@
   }
   function techFor(key) { return MEM.tech[key] || null; }
 
-  window.GMIA = { native: !!NATIVE, run: run, cached: cached, seriesFor: seriesFor, techFor: techFor, signalStats: signalStats, assets: A, SIG_LABEL: SIG_LABEL, SIG_SHORT: SIG_SHORT,
+  window.GMIA = { get: get, chart: chart, native: !!NATIVE, run: run, cached: cached, seriesFor: seriesFor, techFor: techFor, signalStats: signalStats, assets: A, SIG_LABEL: SIG_LABEL, SIG_SHORT: SIG_SHORT,
     backtest: backtest, backtestData: backtestData, btCode: btCode, btNet: btNet };
 })();

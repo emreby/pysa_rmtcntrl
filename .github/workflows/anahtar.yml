@@ -1,0 +1,23 @@
+name: İmza anahtarını canlı tut
+# APK'nın imza anahtarı GitHub önbelleğinde durur ve 7 gün kullanılmazsa silinir. Silinirse yeni APK eski uygulamanın
+# üzerine kurulamaz (telefondaki veriler için uygulamayı silmek gerekir). Bu iş anahtarı haftada iki kez önbellekten
+# okuyarak süresini yeniler. Anahtar bulunamazsa iş başarısız olur ve GitHub depo sahibine e-postayla bildirir.
+on:
+  schedule:
+    - cron: '17 6 * * 1,4'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  yenile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: İmza anahtarını önbellekten oku
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.gmi-imza
+          key: gmi-imza-v1
+          fail-on-cache-miss: true
+      - name: Anahtar dosyası yerinde mi
+        run: test -s ~/.gmi-imza/imza.p12 && test -s ~/.gmi-imza/pass && echo "İmza anahtarı yerinde; önbellek süresi yenilendi."

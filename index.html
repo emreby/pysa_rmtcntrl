@@ -77,27 +77,104 @@
     <p class="sub">Gram = ons seviyesi × son USD/TRY ÷ 31,1035. Vadeli–spot farkı yok sayıldığı için yaklaşıktır.</p>
   </section>
 
+  <section class="view" id="v-birikim" data-view="birikim" hidden>
+    <h2 class="h2">Birikimim</h2>
+    <p class="sub">Elindeki altın ve dövizi gir; bugünkü değerini ve alış fiyatına göre kâr ya da zararını gösterir. Bilgiler yalnız bu telefonda saklanır.</p>
+    <div id="bk-ozet"></div>
+    <ol class="list" id="bk-list"></ol>
+    <details class="card bk-ekle" id="bk-ekle">
+      <summary>Varlık ekle</summary>
+      <form class="frm" id="bk-form" autocomplete="off">
+        <div class="frm-row">
+          <label>Tür<select id="bk-tur"></select></label>
+          <label><span id="bk-miktar-lbl">Miktar (gram)</span><input id="bk-miktar" inputmode="decimal" placeholder="ör. 10"></label>
+        </div>
+        <div class="frm-row">
+          <label>Birim alış fiyatı (TL)<input id="bk-maliyet" inputmode="decimal" placeholder="isteğe bağlı"></label>
+          <label>Alış tarihi<input id="bk-tarih" type="date"></label>
+        </div>
+        <label>Not<input id="bk-not" maxlength="60" placeholder="ör. düğün bileziği, banka hesabı"></label>
+        <div class="btn-row"><button class="btn" type="submit">Ekle</button></div>
+        <p class="pmeta" id="bk-msg" role="status" aria-live="polite"></p>
+      </form>
+    </details>
+    <p class="pmeta">Bugünkü değer, piyasanın alış fiyatıyla (satarken alacağın fiyat) hesaplanır: altında Truncgil, dövizde serbest piyasa. Kuyumcu fiyat defterinde aynı ürün için kayıt varsa, kuyumcunun daha düşük alış fiyatıyla tahmini değer de gösterilir.</p>
+
+    <h2 class="h2">Fiyat alarmlarım</h2>
+    <p class="sub">Fiyat seçtiğin seviyenin altına inince ya da üstüne çıkınca bildirim gelir. Telefon arka planda yaklaşık 15 dakikada bir kontrol eder; uygulama açıkken anında. Her alarm bir kez çalar.</p>
+    <ol class="list" id="al-list"></ol>
+    <form class="card frm al-form" id="al-form" autocomplete="off">
+      <div class="frm-row">
+        <label>Varlık<select id="al-varlik"></select></label>
+        <label id="al-alan-lbl">Fiyat türü<select id="al-alan"><option value="satis">Satış (alırken ödenen)</option><option value="alis">Alış (satarken alınan)</option></select></label>
+      </div>
+      <div class="frm-row">
+        <label>Ne zaman<select id="al-yon"><option value="alt">Altına inerse</option><option value="ust">Üstüne çıkarsa</option></select></label>
+        <label>Seviye<input id="al-fiyat" inputmode="decimal" placeholder="ör. 5.400"></label>
+      </div>
+      <p class="pmeta" id="al-simdi"></p>
+      <label>Not<input id="al-not" maxlength="40" placeholder="isteğe bağlı, ör. alım için"></label>
+      <div class="btn-row"><button class="btn" type="submit">Alarm kur</button></div>
+      <p class="pmeta" id="al-msg" role="status" aria-live="polite"></p>
+    </form>
+
+    <h2 class="h2">Düzenli alım hesabı</h2>
+    <p class="sub">"Her ay aynı tutarda alsaydım bugün ne olurdu?" sorusunu geçmiş fiyatlarla hesaplar. Bu bir hesaptır, öneri değildir; geçmiş sonuç geleceği göstermez.</p>
+    <form class="card frm dca-form" id="dca-form" autocomplete="off">
+      <div class="frm-row">
+        <label>Varlık<select id="dca-varlik">
+          <option value="GRAM">Gram altın</option><option value="USD">Dolar</option><option value="EUR">Euro</option><option value="GUMUS">Gümüş (gram)</option><option value="BIST">BIST 100 endeksi</option>
+        </select></label>
+        <label>Aylık tutar (TL)<input id="dca-tutar" inputmode="decimal" value="2.000"></label>
+      </div>
+      <div class="frm-row">
+        <label>Süre<select id="dca-yil"><option value="1">1 yıl</option><option value="3">3 yıl</option><option value="5" selected>5 yıl</option><option value="10">10 yıl</option></select></label>
+        <label>Alış-satış farkı (%)<input id="dca-fark" inputmode="decimal" placeholder="ör. 1,5"></label>
+      </div>
+      <div class="btn-row"><button class="btn" type="submit">Hesapla</button></div>
+      <p class="pmeta" id="dca-msg" role="status" aria-live="polite"></p>
+    </form>
+    <div id="dca-sonuc"></div>
+  </section>
+
   <section class="view" id="v-iller" data-view="iller" hidden>
     <h2 class="h2">Yakınımdaki kuyumcular</h2>
-    <p class="sub">Konumunu haritada gösterir, çevredeki kuyumcuları işaretler ve bulunduğun ilin kuyumcular odasını bulur. Kuyumcular OpenStreetMap'ten gelir: gönüllülerin girdiği bir harita olduğu için her dükkân kayıtlı olmayabilir; saat ve telefon bilgileri eski olabilir.</p>
+    <p class="sub">Konumunu Google Haritalar'da gösterir ve çevredeki kuyumcuları arar. Bulunduğun ilin kuyumcular odası da eşlenir.</p>
     <div class="card yk-card">
       <div class="btn-row">
         <button class="btn" id="yk-btn" type="button">Konumumu göster</button>
         <button class="btn btn-ghost" id="yk-ayar" type="button" hidden>Uygulama izinlerini aç</button>
       </div>
-      <div class="seg" id="yk-r" role="group" aria-label="Arama alanı" hidden>
-        <button type="button" data-r="1000" aria-pressed="false">1 km</button>
-        <button type="button" data-r="3000" aria-pressed="true">3 km</button>
-        <button type="button" data-r="10000" aria-pressed="false">10 km</button>
-        <button type="button" data-r="25000" aria-pressed="false">25 km</button>
+      <div class="seg" id="yk-z" role="group" aria-label="Harita alanı" hidden>
+        <button type="button" data-z="3500" aria-pressed="false">Yakın</button>
+        <button type="button" data-z="9000" aria-pressed="true">Orta</button>
+        <button type="button" data-z="30000" aria-pressed="false">Geniş</button>
       </div>
       <p class="yk-durum" id="yk-durum" role="status" aria-live="polite"></p>
       <div class="yk-map" id="yk-map" hidden></div>
       <div class="btn-row" id="yk-links"></div>
-      <p class="pmeta">Konum yalnız bu düğmeye basınca alınır ve kaydedilmez. Arama için yaklaşık 100 metreye yuvarlanmış konum OpenStreetMap'in arama servisine (Overpass) gider; harita görüntüsü de OpenStreetMap'ten iner.</p>
+      <p class="pmeta">Konum yalnız bu düğmeye basınca alınır ve uygulamada saklanmaz. Harita ve il bilgisi için yaklaşık 100 metreye yuvarlanmış konum Google'a gider. Kuyumcuların adı, saati ve yorumları Google Haritalar'dan gelir.</p>
     </div>
     <div id="yk-il"></div>
-    <ol class="list yk-list" id="yk-list"></ol>
+
+    <h2 class="h2">Kuyumcu fiyat defterim</h2>
+    <p class="sub">Gittiğin kuyumcunun alış ve satış fiyatını kaydet. Hangi kuyumcunun farkı düşük, zamanla görürsün. Kayıt anındaki piyasa fiyatı da saklanır. Kayıtlar yalnız bu telefonda.</p>
+    <form class="card frm df-form" id="df-form" autocomplete="off">
+      <div class="frm-row">
+        <label>Kuyumcu<input id="df-ad" list="df-adlar" maxlength="40" placeholder="ör. Altın Sarayı"></label>
+        <label>Ürün<select id="df-tur"></select></label>
+      </div>
+      <div class="frm-row">
+        <label>Senden alırken (alış)<input id="df-alis" inputmode="decimal" placeholder="ör. 5.420"></label>
+        <label>Sana satarken (satış)<input id="df-satis" inputmode="decimal" placeholder="ör. 5.560"></label>
+      </div>
+      <label>Not<input id="df-not" maxlength="60" placeholder="isteğe bağlı"></label>
+      <datalist id="df-adlar"></datalist>
+      <div class="btn-row"><button class="btn" type="submit">Kaydet</button></div>
+      <p class="pmeta" id="df-msg" role="status" aria-live="polite"></p>
+    </form>
+    <div id="df-ozet"></div>
+    <ol class="list" id="df-list"></ol>
 
     <h2 class="h2">İllere göre kuyumcu fiyatları</h2>
     <p class="sub">Kuyumcular odalarının üyelerine önerdiği "tavsiye edilen" perakende fiyatlar. Bu fiyatlar işçilik ve kâr payı içerdiği için ekrandaki has ya da serbest piyasa fiyatından yüksektir ve ilden ile değişir.</p>
@@ -187,6 +264,9 @@
   <button class="tab" data-tab="altin" role="tab" aria-selected="false">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg><span>Altın</span>
   </button>
+  <button class="tab" data-tab="birikim" role="tab" aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="7" width="17" height="12.5" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6.5 7l8.5-3 1.6 3M15.5 13.2h2.4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Birikim</span>
+  </button>
   <button class="tab" data-tab="iller" role="tab" aria-selected="false">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-10.6a6.5 6.5 0 1 1 13 0C18.5 15.4 12 21 12 21Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="10.4" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>İller</span>
   </button>
@@ -232,12 +312,25 @@
     </div>
     <p class="sub">Bazı telefonlar (Xiaomi, Huawei, Samsung) pil tasarrufu için arka plan işlerini durdurur. Bildirimler gecikiyorsa "Pil kısıtlamasını kaldır"a dokunup GMI Piyasa için <b>Kısıtlama yok</b> seçin.</p>
     <h3 class="h3">Bildirimler</h3>
-    <p class="sub" id="nt-status">—</p>
+    <p class="sub">Bildirim gelmesi için aşağıdakilerin hepsi ✓ olmalı. Uyarılar yalnız eşik aşıldığında, eğilimi bozan bir seviye kırıldığında ya da kurduğun fiyat alarmı çaldığında gelir; sakin günlerde hiç bildirim gelmemesi normaldir.</p>
+    <ul class="nt-list" id="nt-list"></ul>
+    <p class="sub nt-marka" id="nt-marka" hidden></p>
     <div class="btn-row">
-      <button class="btn" id="btn-nt">Bildirim izni</button>
-      <button class="btn btn-ghost" id="btn-nt-test">Deneme bildirimi</button>
+      <button class="btn" id="btn-nt-test">Deneme bildirimi</button>
     </div>
+    <p class="pmeta" id="nt-test-msg"></p>
+    <label class="switch"><input type="checkbox" id="ozet-toggle"> <span>Günlük özet bildirimi (hafta içi 18:00'den sonra: gram, ons, dolar, BIST)</span></label>
   </div>
+
+  <h3 class="h3">Yedekleme</h3>
+  <p class="sub">Birikimin, fiyat alarmların, kuyumcu fiyat defterin, alış-satış farkın ve karnen tek bir dosyaya kaydedilir. Uygulamayı silip yeniden kurman gerekirse bu dosyayla geri yükleyebilirsin.</p>
+  <div class="btn-row">
+    <button class="btn" id="yd-al" type="button">Yedek al</button>
+    <label class="btn btn-ghost" for="yd-dosya">Yedekten geri yükle</label>
+    <input type="file" id="yd-dosya" accept="application/json,.json,text/plain" hidden>
+  </div>
+  <div id="yd-onay" hidden></div>
+  <p class="pmeta" id="yd-msg" role="status" aria-live="polite"></p>
 
   <div id="web-only">
   <h3 class="h3">Android uygulaması</h3>
@@ -290,7 +383,7 @@
   </details>
 
   <h3 class="h3">Hakkında</h3>
-  <p class="sub" id="about-text">Android uygulaması verileri doğrudan telefondan çeker, analizi ve yorumları telefonda yazar; bilgisayar gerekmez. Yorumlar göstergelerden sabit kurallarla üretilir, yapay zekâ ya da tahmin içermez. Kaynaklar: Yahoo Finance (fiyat ve grafik), Truncgil (yerel altın), Google Haberler (başlıklar), Forex Factory (takvim). Fiyatlar canlı akmaz; her kartta veri saati yazar. Araştırma ve takip amaçlıdır; yatırım tavsiyesi değildir.</p>
+  <p class="sub" id="about-text">Android uygulaması verileri doğrudan telefondan çeker, analizi ve yorumları telefonda yazar; bilgisayar gerekmez. Yorumlar göstergelerden sabit kurallarla üretilir, yapay zekâ ya da tahmin içermez. Kaynaklar: Yahoo Finance (fiyat, grafik ve düzenli alım hesabı), Truncgil (yerel altın, serbest piyasa döviz), gold-api.com (spot ons ve gümüş), TCMB (yedek döviz kuru ve TÜFE tablosu), Google Haberler (başlıklar), Forex Factory (takvim), Google Haritalar (yakındaki kuyumcular). Fiyatlar canlı akmaz; her kartta veri saati yazar. Araştırma ve takip amaçlıdır; yatırım tavsiyesi değildir.</p>
   <p class="sub" id="ver"></p>
 </aside>
 
@@ -300,8 +393,11 @@
 <script src="chart.js"></script>
 <script src="yorum.js"></script>
 <script src="iller.js"></script>
-<script src="harita.js"></script>
 <script src="yakin.js"></script>
+<script src="birikim.js"></script>
+<script src="alarm.js"></script>
+<script src="defter.js"></script>
+<script src="yedek.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

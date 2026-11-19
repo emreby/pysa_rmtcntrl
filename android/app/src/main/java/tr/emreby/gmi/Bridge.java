@@ -4,9 +4,14 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
+import android.location.Address;
+import android.location.Geocoder;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
@@ -15,6 +20,8 @@ import androidx.core.app.NotificationManagerCompat;
 
 import org.json.JSONObject;
 
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -131,6 +138,113 @@ public class Bridge {
                 act.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx.getPackageName())));
             } catch (Exception ignored) {
             }
+        });
+    }
+
+    /* ---------- bildirim kontrol listesi ---------- */
+
+    /** Bildirimlerin gelmesi için gerekenlerin durumu (ayarlar ekranındaki kontrol listesi). */
+    @JavascriptInterface
+    public String notifStatus() {
+        JSONObject o = new JSONObject();
+        try {
+            SharedPreferences p = prefs();
+            o.put("izin", NotificationManagerCompat.from(ctx).areNotificationsEnabled());
+            o.put("kanal", Notify.channelImportance(ctx, Notify.CH));
+            PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
+            o.put("pil", pm != null && pm.isIgnoringBatteryOptimizations(ctx.getPackageName()));
+            o.put("arka", p.getBoolean("bg_on", true));
+            o.put("son", p.getLong("bg_last_ms", 0));
+            o.put("ozet", p.getBoolean("ozet_on", false));
+            o.put("marka", Build.MANUFACTURER);
+            o.put("sdk", Build.VERSION.SDK_INT);
+            o.put("simdi", System.currentTimeMillis());
+            PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
+            o.put("kurulum", pi.firstInstallTime);
+            o.put("guncelleme", pi.lastUpdateTime);
+        } catch (Exception ignored) {
+        }
+        return o.toString();
+    }
+
+    @JavascriptInterface
+    public void openNotificationSettings() {
+        main.post(() -> {
+            try {
+                act.startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.getPackageName()));
+            } catch (Exception e) {
+                try {
+                    act.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx.getPackageName())));
+                } catch (Exception ignored) {
+                }
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public void setDailySummary(boolean on) {
+        prefs().edit().putBoolean("ozet_on", on).apply();
+    }
+
+    /* ---------- fiyat alarmları ---------- */
+
+    @JavascriptInterface
+    public String alarmsGet() {
+        return Alarms.list(ctx);
+    }
+
+    @JavascriptInterface
+    public void alarmsSet(String json) {
+        Alarms.setList(ctx, json);
+    }
+
+    @JavascriptInterface
+    public String alarmHits() {
+        return Alarms.hits(ctx).toString();
+    }
+
+    /** Uygulama açıkken arayüzün yakaladığı alarm: daha önce çalmadıysa kaydedip bildirim gösterir. */
+    @JavascriptInterface
+    public boolean alarmHit(String id, double px, String src, String title, String text) {
+        return Alarms.fire(ctx, id, px, src, title, text);
+    }
+
+    /* ---------- yedek dosyası ---------- */
+
+    /** Dosyayı kullanıcının seçtiği yere kaydeder (Android dosya kaydetme ekranı); sonuç window.__gmiSaved(ok, mesaj). */
+    @JavascriptInterface
+    public void saveFile(final String name, final String content) {
+        main.post(() -> {
+            if (act instanceof MainActivity) ((MainActivity) act).saveFile(name, content);
+        });
+    }
+
+    /* ---------- konumdan il ve ilçe ---------- */
+
+    /** Telefonun adres servisiyle (Android Geocoder; Google hizmetli telefonlarda Google) il ve ilçe; sonuç window.__gmiGeo(id, json). */
+    @JavascriptInterface
+    public void geocode(final String id, final double lat, final double lon) {
+        pool.execute(() -> {
+            JSONObject o = new JSONObject();
+            try {
+                if (!Geocoder.isPresent()) throw new Exception("bu telefonda adres servisi yok");
+                @SuppressWarnings("deprecation")
+                List<Address> l = new Geocoder(ctx, Locale.forLanguageTag("tr-TR")).getFromLocation(lat, lon, 1);
+                if (l == null || l.isEmpty()) throw new Exception("adres bulunamadı");
+                Address a = l.get(0);
+                o.put("ok", true);
+                if (a.getAdminArea() != null) o.put("il", a.getAdminArea());
+                String ilce = a.getSubAdminArea() != null ? a.getSubAdminArea() : a.getLocality();
+                if (ilce != null) o.put("ilce", ilce);
+            } catch (Exception e) {
+                try {
+                    o.put("ok", false);
+                    o.put("hata", String.valueOf(e.getMessage()));
+                } catch (Exception ignored) {
+                }
+            }
+            final String js = "window.__gmiGeo&&window.__gmiGeo(" + JSONObject.quote(id) + "," + o + ")";
+            main.post(() -> web.evaluateJavascript(js, null));
         });
     }
 

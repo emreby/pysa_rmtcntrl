@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.GeolocationPermissions;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -17,13 +18,20 @@ import android.webkit.WebViewClient;
 
 import androidx.webkit.WebViewAssetLoader;
 
+import org.json.JSONObject;
+
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+
 /** Uygulama kabuğu: arayüz (HTML/JS) uygulamanın içinden yüklenir; veri istekleri Bridge üzerinden yapılır. */
 public class MainActivity extends Activity {
     static final String HOST = "appassets.androidplatform.net";
-    static final int REQ_NOTIFY = 1, REQ_LOCATION = 2;
+    static final int REQ_NOTIFY = 1, REQ_LOCATION = 2, REQ_OPEN_FILE = 3, REQ_SAVE_FILE = 4;
     private WebView web;
     private GeolocationPermissions.Callback geoCallback;
     private String geoOrigin;
+    private ValueCallback<Uri[]> fileCallback;
+    private String pendingSave;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,7 +47,7 @@ public class MainActivity extends Activity {
         s.setTextZoom(100);
         // İller sekmesindeki "yakınımdaki kuyumcular" için konum. Konum yalnız kullanıcı düğmeye basınca istenir.
         s.setGeolocationEnabled(true);
-        // Harita karoları ve OpenStreetMap servisleri uygulamayı tanıyabilsin diye (kullanım koşulları bunu ister).
+        // Uygulamanın kendi isteklerini tanıtan ek (tarayıcı kimliğinin sonuna).
         s.setUserAgentString(s.getUserAgentString() + " GMIPiyasa/" + BuildConfig.VERSION_NAME + " (+https://github.com/emreby/pysa_rmtcntrl)");
 
         final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
@@ -56,6 +64,8 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 Uri u = request.getUrl();
                 if (HOST.equals(u.getHost())) return false;
+                // Gömülü Google haritasının (iframe) kendi içindeki gezinmesi iframe'de kalır; yalnız sayfadan çıkan bağlantılar dışarıda açılır.
+                if (!request.isForMainFrame()) return false;
                 try {
                     startActivity(new Intent(Intent.ACTION_VIEW, u));
                 } catch (Exception ignored) {
@@ -84,6 +94,21 @@ public class MainActivity extends Activity {
                 geoCallback = null;
                 geoOrigin = null;
             }
+
+            // Yedek dosyasını geri yüklemek için dosya seçme (<input type="file">).
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+                if (fileCallback != null) fileCallback.onReceiveValue(null);
+                fileCallback = callback;
+                Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+                try {
+                    startActivityForResult(i, REQ_OPEN_FILE);
+                } catch (Exception e) {
+                    fileCallback = null;
+                    return false;
+                }
+                return true;
+            }
         });
         web.addJavascriptInterface(new Bridge(this, web), "GMI_NATIVE");
         web.loadUrl("https://" + HOST + "/assets/www/index.html");
@@ -111,6 +136,48 @@ public class MainActivity extends Activity {
             geoCallback.invoke(geoOrigin, hasLocationPermission(), false);
             geoCallback = null;
             geoOrigin = null;
+        }
+    }
+
+    /** Yedek dosyasını kaydetme: Android'in dosya kaydetme ekranını açar, içerik onActivityResult'ta yazılır. */
+    void saveFile(String name, String content) {
+        pendingSave = content;
+        Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE, name);
+        try {
+            startActivityForResult(i, REQ_SAVE_FILE);
+        } catch (Exception e) {
+            pendingSave = null;
+            savedResult(false, "Dosya kaydetme ekranı açılamadı.");
+        }
+    }
+
+    private void savedResult(boolean ok, String msg) {
+        if (web != null) web.evaluateJavascript("window.__gmiSaved&&window.__gmiSaved(" + ok + "," + JSONObject.quote(msg) + ")", null);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_OPEN_FILE) {
+            if (fileCallback != null) {
+                Uri[] res = (resultCode == RESULT_OK && data != null && data.getData() != null) ? new Uri[]{data.getData()} : null;
+                fileCallback.onReceiveValue(res);
+                fileCallback = null;
+            }
+        } else if (requestCode == REQ_SAVE_FILE) {
+            String content = pendingSave;
+            pendingSave = null;
+            if (resultCode != RESULT_OK || data == null || data.getData() == null || content == null) {
+                savedResult(false, "Kaydetme iptal edildi.");
+                return;
+            }
+            try (OutputStream os = getContentResolver().openOutputStream(data.getData(), "wt")) {
+                if (os == null) throw new Exception("dosya açılamadı");
+                os.write(content.getBytes(StandardCharsets.UTF_8));
+                savedResult(true, "Yedek kaydedildi.");
+            } catch (Exception e) {
+                savedResult(false, "Kaydedilemedi: " + e.getMessage());
+            }
         }
     }
 

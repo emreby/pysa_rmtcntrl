@@ -22,6 +22,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Arka plan kontrolü (yaklaşık 15 dakikada bir, telefon izin verdikçe).
@@ -180,23 +182,217 @@ public class CheckWorker extends Worker {
                     asset + " " + n(q.price, dp) + u + " · seviye " + when + " analizinden (" + l.optString("r1_note", "") + ")");
     }
 
+    /* ---------------- fiyat alarmları ---------------- */
+
+    /** Alarm için fiyat ve kaynağı. */
+    static final class P {
+        double v = Double.NaN;
+        String src = "";
+    }
+
+    /** Alarmların ihtiyaç duyduğu kaynaklar; her biri bu çalışmada en çok bir kez çekilir. */
+    static final class Px {
+        JSONObject tg;
+        boolean tgDone;
+        final Map<String, Q> yahoo = new HashMap<>();
+        final Map<String, Double> spot = new HashMap<>();
+        String tcmbBody;
+        boolean tcmbDone;
+
+        JSONObject truncgil() {
+            if (!tgDone) {
+                tg = CheckWorker.truncgil();
+                tgDone = true;
+            }
+            return tg;
+        }
+
+        Q yahoo(String sym, boolean isFx) {
+            Q q = yahoo.get(sym);
+            if (q == null) {
+                q = isFx ? fx(sym) : daily(sym);
+                yahoo.put(sym, q);
+            }
+            return q;
+        }
+
+        double spot(String metal) {
+            Double v = spot.get(metal);
+            if (v == null) {
+                v = Double.NaN;
+                try {
+                    Net.Resp r = Net.get("https://api.gold-api.com/price/" + metal);
+                    if (r.code == 200) v = new JSONObject(r.body).optDouble("price", Double.NaN);
+                } catch (Exception ignored) {
+                }
+                spot.put(metal, v);
+            }
+            return v;
+        }
+
+        /** TCMB günlük gösterge kuru (döviz satış). */
+        double tcmb(String code) {
+            if (!tcmbDone) {
+                tcmbDone = true;
+                try {
+                    Net.Resp r = Net.get("https://www.tcmb.gov.tr/kurlar/today.xml");
+                    if (r.code == 200) tcmbBody = r.body;
+                } catch (Exception ignored) {
+                }
+            }
+            if (tcmbBody == null) return Double.NaN;
+            Matcher m = Pattern.compile("CurrencyCode=\"" + code + "\"[\\s\\S]*?<ForexSelling>([0-9.]+)</ForexSelling>").matcher(tcmbBody);
+            try {
+                return m.find() ? Double.parseDouble(m.group(1)) : Double.NaN;
+            } catch (Exception e) {
+                return Double.NaN;
+            }
+        }
+    }
+
+    static boolean tgPrice(Px px, String key, String field, P r) {
+        JSONObject tg = px.truncgil();
+        JSONObject o = tg == null ? null : tg.optJSONObject(key);
+        if (o == null) return false;
+        boolean alis = "alis".equals(field);
+        double v = o.optDouble(alis ? "Buying" : "Selling", Double.NaN);
+        if (Double.isNaN(v) || v <= 0) return false;
+        r.v = v;
+        r.src = (alis ? "alış" : "satış") + " · Truncgil";
+        return true;
+    }
+
+    static boolean yahooPrice(Px px, String sym, boolean isFx, P r) {
+        Q q = px.yahoo(sym, isFx);
+        if (q == null || Double.isNaN(q.price) || q.err != null) return false;
+        r.v = q.price;
+        r.src = "Yahoo Finance";
+        return true;
+    }
+
+    static boolean spotPrice(Px px, String metal, P r) {
+        double v = px.spot(metal);
+        if (Double.isNaN(v) || v <= 0) return false;
+        r.v = v;
+        r.src = "spot · gold-api.com";
+        return true;
+    }
+
+    static boolean tcmbPrice(Px px, String code, P r) {
+        double v = px.tcmb(code);
+        if (Double.isNaN(v) || v <= 0) return false;
+        r.v = v;
+        r.src = "TCMB gösterge kuru";
+        return true;
+    }
+
+    /** Varlığın fiyatı; ana kaynak alınamazsa yedek kaynağa geçer. */
+    static P alarmPrice(Px px, String asset, String field) {
+        P r = new P();
+        switch (asset) {
+            case "GRAM": tgPrice(px, "GRA", field, r); break;
+            case "CEYREK": tgPrice(px, "CEYREKALTIN", field, r); break;
+            case "YARIM": tgPrice(px, "YARIMALTIN", field, r); break;
+            case "TAM": tgPrice(px, "TAMALTIN", field, r); break;
+            case "ATA": if (!tgPrice(px, "ATAALTIN", field, r)) tgPrice(px, "CUMHURIYETALTINI", field, r); break;
+            case "GUMUS_TL": tgPrice(px, "GUMUS", field, r); break;
+            case "ONS": if (!spotPrice(px, "XAU", r)) yahooPrice(px, "GC=F", false, r); break;
+            case "GUMUS_ONS": if (!spotPrice(px, "XAG", r)) yahooPrice(px, "SI=F", false, r); break;
+            case "USD":
+                if (!yahooPrice(px, "TRY=X", true, r) && !tgPrice(px, "USD", "satis", r)) tcmbPrice(px, "USD", r);
+                break;
+            case "EUR":
+                if (!yahooPrice(px, "EURTRY=X", true, r) && !tgPrice(px, "EUR", "satis", r)) tcmbPrice(px, "EUR", r);
+                break;
+            case "BIST": yahooPrice(px, "XU100.IS", false, r); break;
+            case "BTC": yahooPrice(px, "BTC-USD", false, r); break;
+            case "BRENT": yahooPrice(px, "BZ=F", false, r); break;
+            default: break;
+        }
+        return r;
+    }
+
+    /** Kurulu alarmları kontrol eder; çalanlar için bildirim gösterir. Çalan alarm sayısını döndürür. */
+    static int checkAlarms(Context ctx, SharedPreferences p, Px px, String hhmm, List<A> fired) {
+        JSONArray al;
+        try {
+            al = new JSONArray(Alarms.list(ctx));
+        } catch (Exception e) {
+            return 0;
+        }
+        JSONObject hits = Alarms.hits(ctx);
+        int n = 0;
+        for (int i = 0; i < al.length() && i < 50; i++) {
+            JSONObject a = al.optJSONObject(i);
+            if (a == null || !a.optBoolean("on", true)) continue;
+            String id = a.optString("id", "");
+            double target = a.optDouble("price", Double.NaN);
+            if (id.isEmpty() || hits.has(id) || Double.isNaN(target)) continue;
+            P r = alarmPrice(px, a.optString("asset", ""), a.optString("field", "satis"));
+            if (Double.isNaN(r.v)) continue;
+            boolean up = "ust".equals(a.optString("dir", "alt"));
+            if (up ? r.v >= target : r.v <= target) {
+                int dp = a.optInt("dp", 2);
+                String unit = a.optString("unit", "");
+                String u = unit.isEmpty() ? "" : " " + unit;
+                String name = a.optString("name", a.optString("asset", ""));
+                String title = "Fiyat alarmı: " + n(target, dp) + u + (up ? " üstü" : " altı");
+                String text = name + " " + n(r.v, dp) + u + " (" + r.src + ") · " + hhmm + (a.optString("note", "").isEmpty() ? "" : " · " + a.optString("note", ""));
+                if (Alarms.fire(ctx, id, r.v, r.src, "GMI · " + name + ": " + title, text)) {
+                    n++;
+                    if (fired != null) fired.add(new A("alarm-" + id, name, title, text));
+                }
+            }
+        }
+        return n;
+    }
+
+    /** Gün sonu özeti (kullanıcı açtıysa): hafta içi 18:00'den sonraki ilk kontrolde, günde bir kez. */
+    static void dailySummary(Context ctx, SharedPreferences p, String today, int hour, String body) {
+        if (!p.getBoolean("ozet_on", false) || hour < 18 || today.equals(p.getString("ozet_gun", "")) || body.isEmpty()) return;
+        if (Notify.show(ctx, Notify.CH_OZET, "GMI · Günün özeti", body, 31000)) p.edit().putString("ozet_gun", today).apply();
+    }
+
+    static String priceLine(JSONObject px) {
+        StringBuilder sb = new StringBuilder();
+        String[][] k = {{"gram", "Gram altın "}, {"ons", "Ons "}, {"usdtry", "USD/TRY "}, {"bist", "BIST 100 "}};
+        for (String[] x : k) {
+            String v = px.optString(x[0], "");
+            if (v.isEmpty()) continue;
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append(x[1]).append(v);
+        }
+        return sb.toString();
+    }
+
     @NonNull
     @Override
     public Result doWork() {
         Context ctx = getApplicationContext();
         SharedPreferences p = ctx.getSharedPreferences("gmi", Context.MODE_PRIVATE);
-        if (!p.getBoolean("bg_on", true)) return Result.success();
+        boolean manual = getInputData().getBoolean("manual", false);
+        if (!p.getBoolean("bg_on", true) && !manual) return Result.success();
         long nowMs = System.currentTimeMillis();
+        // Son çalışma zamanı: ayarlar ekranı arka plan kontrolünün telefonda gerçekten çalışıp çalışmadığını buradan gösterir.
+        p.edit().putLong("bg_last_ms", nowMs).apply();
         String today = fmt("yyyy-MM-dd", nowMs), hhmm = fmt("HH:mm", nowMs);
         JSONObject log = new JSONObject();
         JSONArray errs = new JSONArray();
+        Px px = new Px();
         try {
             log.put("time", today + " " + hhmm);
+            log.put("ms", nowMs);
+            log.put("manual", manual);
             Calendar cal = Calendar.getInstance(TRT);
             int dow = cal.get(Calendar.DAY_OF_WEEK);
             if (dow == Calendar.SATURDAY || dow == Calendar.SUNDAY) {
-                log.put("note", "Hafta sonu: piyasalar kapalı, kontrol yapılmadı.");
+                int fired = checkAlarms(ctx, p, px, hhmm, null);
+                log.put("note", "Hafta sonu: piyasalar kapalı; yalnız fiyat alarmları kontrol edildi.");
+                log.put("alarms", fired);
                 p.edit().putString("bglog", log.toString()).apply();
+                if (manual)
+                    Notify.show(ctx, Notify.CH_OZET, "GMI · Kontrol tamamlandı", "Hafta sonu: piyasalar kapalı; fiyat alarmları kontrol edildi"
+                            + (fired > 0 ? ", " + fired + " alarm çaldı." : ", çalan alarm yok.") + " Bildirimler çalışıyor.", 32000);
                 return Result.success();
             }
             JSONObject st = new JSONObject(p.getString("state", "{}"));
@@ -208,6 +404,12 @@ public class CheckWorker extends Worker {
             for (Q q : new Q[]{gold, usd, brent, bist, vix, tnx}) if (q.err != null) errs.put(q.err);
             JSONObject tg = truncgil();
             if (tg == null) errs.put("Truncgil alınamadı");
+            px.tg = tg;
+            px.tgDone = true;
+            px.yahoo.put("GC=F", gold);
+            px.yahoo.put("TRY=X", usd);
+            px.yahoo.put("BZ=F", brent);
+            px.yahoo.put("XU100.IS", bist);
 
             if (fresh(gold, today) && Math.abs(gold.chg) >= 1.5)
                 add(alerts, seen, "ons-yuzde" + sgn(gold.chg), "Ons altın", "Günlük " + pct(gold.chg), "COMEX vadeli " + n(gold.price, 1) + " $; eşik ±%1,5");
@@ -222,6 +424,13 @@ public class CheckWorker extends Worker {
                 gramChg = ((1 + gold.chg / 100) * (1 + usd.chg / 100) - 1) * 100;
                 gramPx = gold.price * usd.price / 31.1034768;
                 gramSrc = "teorik";
+            } else {
+                // Yedek: spot ons (gold-api.com) × USD/TRY (Yahoo yoksa TCMB gösterge kuru)
+                P o = new P(), u = new P();
+                if (spotPrice(px, "XAU", o) && (yahooPrice(px, "TRY=X", true, u) || tcmbPrice(px, "USD", u))) {
+                    gramPx = o.v * u.v / 31.1034768;
+                    gramSrc = "teorik, yedek kaynak";
+                }
             }
             if (!Double.isNaN(gramChg) && Math.abs(gramChg) >= 1.5)
                 add(alerts, seen, "gram-yuzde" + sgn(gramChg), "Gram altın", "Günlük " + pct(gramChg), "Gram altın " + n(gramPx, 2) + " TL (" + gramSrc + "); eşik ±%1,5");
@@ -270,11 +479,13 @@ public class CheckWorker extends Worker {
                 saved = new JSONArray();
             }
             int id = (int) (nowMs / 1000 % 100000);
-            for (A a : alerts) {
-                Notify.show(ctx, "GMI · " + a.asset + ": " + a.title, a.detail + " · " + hhmm, id++);
+            for (A a : alerts) Notify.show(ctx, "GMI · " + a.asset + ": " + a.title, a.detail + " · " + hhmm, id++);
+            List<A> firedList = new ArrayList<>();
+            int fired = checkAlarms(ctx, p, px, hhmm, firedList);
+            alerts.addAll(firedList);
+            for (A a : alerts)
                 saved.put(new JSONObject().put("id", today + "-" + hhmm.replace(":", "") + "-" + a.key).put("time", today + " " + hhmm)
                         .put("asset", a.asset).put("title", a.title).put("detail", a.detail).put("level", "uyarı").put("session", "Arka plan kontrolü"));
-            }
             JSONArray trimmed = new JSONArray();
             for (int i = Math.max(0, saved.length() - 40); i < saved.length(); i++) trimmed.put(saved.get(i));
 
@@ -283,15 +494,25 @@ public class CheckWorker extends Worker {
             for (Map.Entry<String, ?> e : p.getAll().entrySet())
                 if (e.getKey().startsWith("seen_") && !e.getKey().equals("seen_" + today)) ed.remove(e.getKey());
             ed.putString("bg_alerts", trimmed.toString());
-            JSONObject px = new JSONObject();
-            if (gold.ok()) px.put("ons", n(gold.price, 1) + " $ (" + pct(gold.chg) + ")");
-            if (!Double.isNaN(gramPx)) px.put("gram", n(gramPx, 2) + " TL (" + pct(gramChg) + ")");
-            if (usd.ok()) px.put("usdtry", n(usd.price, 4) + " (" + pct(usd.chg) + ")");
-            log.put("prices", px);
+            JSONObject pxs = new JSONObject();
+            if (gold.ok()) pxs.put("ons", n(gold.price, 1) + " $ (" + pct(gold.chg) + ")");
+            if (!Double.isNaN(gramPx)) pxs.put("gram", n(gramPx, 2) + " TL" + (Double.isNaN(gramChg) ? "" : " (" + pct(gramChg) + ")"));
+            if (usd.ok()) pxs.put("usdtry", n(usd.price, 4) + " (" + pct(usd.chg) + ")");
+            if (bist.ok()) pxs.put("bist", n(bist.price, 0) + " (" + pct(bist.chg) + ")");
+            log.put("prices", pxs);
             log.put("new_alerts", alerts.size());
+            log.put("alarms", fired);
             log.put("errors", errs);
             ed.putString("bglog", log.toString());
             ed.apply();
+
+            String line = priceLine(pxs);
+            dailySummary(ctx, p, today, cal.get(Calendar.HOUR_OF_DAY), line);
+            if (manual) {
+                String t = alerts.isEmpty() ? "Kontrol tamamlandı: yeni uyarı yok" : "Kontrol tamamlandı: " + alerts.size() + " yeni uyarı";
+                Notify.show(ctx, Notify.CH_OZET, "GMI · " + t, (line.isEmpty() ? "Fiyatlar alınamadı." : line)
+                        + (errs.length() > 0 ? " · alınamayan veri: " + errs.length() : "") + " · Bildirimler çalışıyor.", 32000);
+            }
         } catch (Exception e) {
             try {
                 errs.put(String.valueOf(e.getMessage()));
@@ -299,6 +520,7 @@ public class CheckWorker extends Worker {
             } catch (Exception ignored) {
             }
             p.edit().putString("bglog", log.toString()).apply();
+            if (manual) Notify.show(ctx, Notify.CH_OZET, "GMI · Kontrol tamamlanamadı", String.valueOf(e.getMessage()), 32000);
         }
         return Result.success();
     }

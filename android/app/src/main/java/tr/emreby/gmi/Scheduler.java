@@ -3,6 +3,7 @@ package tr.emreby.gmi;
 import android.content.Context;
 
 import androidx.work.Constraints;
+import androidx.work.Data;
 import androidx.work.ExistingPeriodicWorkPolicy;
 import androidx.work.ExistingWorkPolicy;
 import androidx.work.NetworkType;
@@ -31,9 +32,11 @@ final class Scheduler {
         WorkManager.getInstance(ctx).cancelUniqueWork(NAME);
     }
 
+    /** Elle başlatılan kontrol: sonucu her zaman bildirim olarak gösterir (bildirimlerin çalıştığını doğrulamak için). */
     static void runOnce(Context ctx) {
         Constraints c = new Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build();
-        OneTimeWorkRequest req = new OneTimeWorkRequest.Builder(CheckWorker.class).setConstraints(c).build();
+        OneTimeWorkRequest req = new OneTimeWorkRequest.Builder(CheckWorker.class).setConstraints(c)
+                .setInputData(new Data.Builder().putBoolean("manual", true).build()).build();
         WorkManager.getInstance(ctx).enqueueUniqueWork(NAME + "-simdi", ExistingWorkPolicy.REPLACE, req);
     }
 }

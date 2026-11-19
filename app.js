@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var CFG = window.GMI_CONFIG || {};
-  var VERSION = '2.4.0';
+  var VERSION = '2.5.0';
   var NATIVE = window.GMI_NATIVE || null;
   var GA = window.GMIA || null;
   var USE_PHONE = !!(NATIVE && GA);
@@ -11,7 +11,7 @@
   var STRIP = ['GRAM', 'GOLD_FUT', 'SILVER_FUT', 'USDTRY', 'XU100', 'BTC'];
   var chartState = { key: null, tf: 'G', span: 1 };
   var MON = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
-  var VIEWS = ['piyasa', 'altin', 'iller', 'teknik', 'gundem', 'karne'];
+  var VIEWS = ['piyasa', 'altin', 'birikim', 'iller', 'teknik', 'gundem', 'karne'];
   var YZ = window.GMIYORUM || null;
   var state = { data: null, fetchedAt: 0, offline: false, loading: false, error: null };
   var installEvt = null;
@@ -90,6 +90,7 @@
       return;
     }
     renderHeader(); renderStrip(); renderMarketYorum(); renderAlerts(); renderPrices(); renderGold(); renderSpot(); renderMakas(); renderIller(); renderSignals(); renderTech(); renderAgenda(); renderPerf(); renderBt(); renderBanner();
+    try { document.dispatchEvent(new CustomEvent('gmi:data')); } catch (e) { /* yok say */ }
   }
 
   function status() { return rows('status')[0] || {}; }
@@ -126,7 +127,73 @@
       b.append(span, btn);
     }
     msgs.forEach(function (m) { b.append(el('div', null, m)); });
+    var ns = ntSorun();
+    if (ns) {
+      var row = el('div', 'banner-nt');
+      row.append(el('span', null, ns.text));
+      var fix = el('button', 'btn btn-sm', ns.btn);
+      fix.addEventListener('click', ns.act);
+      row.append(fix);
+      b.append(row);
+    }
     b.hidden = !b.firstChild;
+  }
+  /* ---------- bildirimler gelebiliyor mu? ---------- */
+  function ntDurum() {
+    if (!NATIVE || typeof NATIVE.notifStatus !== 'function') return null;
+    try { return JSON.parse(NATIVE.notifStatus() || '{}'); } catch (e) { return null; }
+  }
+  function sureTxt(ms, ek) {
+    var dk = Math.round(ms / 6e4);
+    if (dk < 60) return dk + ' dakika' + (ek ? 'dır' : '');
+    var sa = Math.round(dk / 60);
+    return sa < 48 ? sa + ' saat' + (ek ? 'tir' : '') : Math.round(sa / 24) + ' gün' + (ek ? 'dür' : '');
+  }
+  // Ana ekrandaki uyarı: yalnız bildirimlerin gelmesini engelleyen bir durum varsa.
+  function ntSorun() {
+    var d = ntDurum();
+    if (!d) return null;
+    if (d.izin === false) return { text: 'Bildirimler kapalı: uyarılar ve fiyat alarmları gelmez.', btn: 'Aç', act: function () { NATIVE.requestNotifications(); setTimeout(renderBanner, 2500); } };
+    if (d.kanal === 0) return { text: '"Piyasa uyarıları" bildirimleri kapatılmış.', btn: 'Aç', act: function () { NATIVE.openNotificationSettings(); } };
+    var gec = d.simdi - (d.son || d.guncelleme || d.kurulum || d.simdi);
+    if (d.arka && gec > 3 * 36e5) return { text: 'Arka plan kontrolü ' + sureTxt(gec, true) + ' çalışmadı; uyarılar gecikebilir.', btn: 'Nasıl düzeltilir', act: openSheet };
+    return null;
+  }
+  var MARKA = [
+    [/xiaomi|redmi|poco/i, 'Xiaomi / Redmi / POCO: Ayarlar → Uygulamalar → GMI Piyasa → Otomatik başlatma açık; Pil tasarrufu → Kısıtlama yok.'],
+    [/samsung/i, 'Samsung: Ayarlar → Pil → Arka plan kullanım sınırları → GMI Piyasa "Uyuyan uygulamalar"da olmasın; "Hiç uyumayan uygulamalar"a ekleyin.'],
+    [/huawei|honor/i, 'Huawei / Honor: Ayarlar → Pil → Uygulama başlatma → GMI Piyasa → Elle yönet; üç seçeneği de açın.'],
+    [/oppo|realme|oneplus/i, 'Oppo / Realme / OnePlus: Ayarlar → Pil → GMI Piyasa → Arka plan etkinliğine izin ver; Otomatik başlatma açık.'],
+    [/vivo|iqoo/i, 'Vivo: Ayarlar → Pil → Arka planda yüksek güç tüketimi → GMI Piyasa\'ya izin verin.']
+  ];
+  function renderNtList() {
+    var box = $('nt-list'), d = ntDurum();
+    if (!box) return;
+    clear(box);
+    if (!d) { box.append(el('li', 'nt-item', 'Durum okunamadı (eski uygulama sürümü).')); return; }
+    function item(ok, text, btn, act) {
+      var li = el('li', 'nt-item ' + (ok === true ? 'ok' : (ok === false ? 'bad' : 'warn')));
+      li.append(el('span', 'nt-ico', ok === true ? '✓' : (ok === false ? '✗' : '!')), el('span', 'nt-txt', text));
+      if (btn) { var b = el('button', 'btn btn-sm btn-ghost', btn); b.type = 'button'; b.addEventListener('click', act); li.append(b); }
+      box.append(li);
+    }
+    item(d.izin, d.izin ? 'Bildirim izni açık.' : 'Bildirim izni kapalı.', d.izin ? null : 'İzin ver', function () { NATIVE.requestNotifications(); setTimeout(renderNtList, 2500); });
+    if (d.kanal === 0) item(false, '"Piyasa uyarıları" bildirim türü kapatılmış.', 'Aç', function () { NATIVE.openNotificationSettings(); });
+    item(d.arka, d.arka ? 'Arka plan kontrolü açık.' : 'Arka plan kontrolü kapalı.', d.arka ? null : 'Aç', function () { NATIVE.setBackground(true); $('bg-toggle').checked = true; renderNtList(); });
+    item(d.pil ? true : null, d.pil ? 'Pil kısıtlaması yok.' : 'Pil tasarrufu arka plan kontrolünü geciktirebilir.', d.pil ? null : 'Kısıtlamayı kaldır', function () { NATIVE.openBatterySettings(); });
+    var basla = d.guncelleme || d.kurulum || d.simdi;
+    if (d.son) {
+      var gec = d.simdi - d.son;
+      item(gec < 45 * 6e4 ? true : (gec < 3 * 36e5 ? null : false), 'Son arka plan kontrolü ' + sureTxt(Math.max(gec, 6e4)) + ' önce.' + (gec >= 3 * 36e5 ? ' Telefon arka plan işini durduruyor olabilir.' : ''));
+    } else if (d.simdi - basla < 40 * 6e4) {
+      item(null, 'Arka plan kontrolü henüz çalışmadı; ilk kontrol kurulumdan sonraki 15–30 dakika içinde yapılır.');
+    } else {
+      item(false, 'Arka plan kontrolü bu sürüm kurulduğundan beri hiç çalışmadı. Telefon arka plan işini durduruyor olabilir.');
+    }
+    var tip = MARKA.filter(function (m) { return m[0].test(d.marka || ''); })[0];
+    $('nt-marka').textContent = tip ? tip[1] + ' (Menü adları sürüme göre değişebilir.)' : '';
+    $('nt-marka').hidden = !tip;
+    try { $('ozet-toggle').checked = !!d.ozet; } catch (e) { /* yok say */ }
   }
 
   function renderAlerts() {
@@ -520,9 +587,14 @@
     if (!a || !b || a <= 0 || b <= 0) { out.textContent = 'İki fiyatı da yaz (ör. 6.250 ve 6.400).'; return; }
     if (b < a) { out.textContent = 'Satış fiyatı alış fiyatından düşük olamaz; yerlerini kontrol et.'; return; }
     if ((b - a) / b > 0.2) { out.textContent = 'Fark %20\'den büyük çıktı; fiyatları kontrol et.'; return; }
-    var d = new Date(), m = { alis: a, satis: b, kayip: 100 * (b - a) / b, esik: 100 * (b / a - 1), tarih: d.getDate() + ' ' + ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'][d.getMonth()] };
+    makasKaydet(a, b);
+  }
+  function makasKaydet(a, b, kaynak) {
+    var d = new Date(), m = { alis: a, satis: b, kayip: 100 * (b - a) / b, esik: 100 * (b / a - 1), tarih: d.getDate() + ' ' + MON[d.getMonth()], kaynak: kaynak || null };
     try { localStorage.setItem(MK, JSON.stringify(m)); } catch (e) { /* yok say */ }
+    $('mk-alis').value = num(a, 2); $('mk-satis').value = num(b, 2);
     renderMakas();
+    try { document.dispatchEvent(new CustomEvent('gmi:makas')); } catch (e) { /* yok say */ }
   }
   function renderMakas() {
     var m = makasGet(), out = $('mk-sonuc');
@@ -702,27 +774,23 @@
     if (px.ons) parts.push('ons ' + px.ons);
     if (px.gram) parts.push('gram ' + px.gram);
     if (px.usdtry) parts.push('USD/TRY ' + px.usdtry);
-    var txt = 'Son kontrol: ' + when(j.time) + (j.note ? ' · ' + j.note : '') + (parts.length ? ' · ' + parts.join(' · ') : '') + (j.new_alerts != null ? ' · yeni uyarı: ' + j.new_alerts : '');
+    var txt = 'Son kontrol: ' + when(j.time) + (j.manual ? ' (elle)' : '') + (j.note ? ' · ' + j.note : '') + (parts.length ? ' · ' + parts.join(' · ') : '') + (j.new_alerts != null ? ' · yeni uyarı: ' + j.new_alerts : '') + (j.alarms ? ' · çalan alarm: ' + j.alarms : '');
     if (j.errors && j.errors.length) txt += ' · alınamayan veri: ' + j.errors.length;
     $('bg-log').textContent = txt;
   }
-  function renderNt() {
-    if (!NATIVE) return;
-    var on = false; try { on = NATIVE.notificationsAllowed(); } catch (e) { on = false; }
-    $('nt-status').textContent = on ? 'Bildirim izni açık.' : 'Bildirim izni kapalı. "Bildirim izni" düğmesine dokunun.';
-  }
+  function renderNt() { if (NATIVE) renderNtList(); }
   function setupNative() {
     if (!NATIVE) { if ($('apk-link') && CFG.apkUrl) $('apk-link').href = CFG.apkUrl; return; }
     $('native-only').hidden = false; $('web-only').hidden = true;
     try { $('bg-toggle').checked = NATIVE.backgroundOn(); } catch (e) { /* yok say */ }
     $('bg-toggle').addEventListener('change', function () { NATIVE.setBackground(this.checked); renderBgLog(); });
     $('btn-check-now').addEventListener('click', function () {
-      NATIVE.checkNow(); $('bg-log').textContent = 'Kontrol başlatıldı; sonuç birkaç saniye içinde burada görünür.';
-      setTimeout(renderBgLog, 12000); setTimeout(renderBgLog, 30000);
+      NATIVE.checkNow(); $('bg-log').textContent = 'Kontrol başlatıldı; sonuç birkaç saniye içinde bildirim olarak gelir ve burada görünür.';
+      setTimeout(function () { renderBgLog(); renderNtList(); }, 12000); setTimeout(function () { renderBgLog(); renderNtList(); }, 30000);
     });
     $('btn-battery').addEventListener('click', function () { NATIVE.openBatterySettings(); });
-    $('btn-nt').addEventListener('click', function () { NATIVE.requestNotifications(); setTimeout(renderNt, 2000); });
-    $('btn-nt-test').addEventListener('click', function () { NATIVE.testNotification(); });
+    $('btn-nt-test').addEventListener('click', function () { NATIVE.testNotification(); $('nt-test-msg').textContent = 'Deneme bildirimi gönderildi. Gelmediyse yukarıdaki listede ✗ olan maddeyi düzeltin.'; });
+    if ($('ozet-toggle')) $('ozet-toggle').addEventListener('change', function () { try { NATIVE.setDailySummary(this.checked); } catch (e) { /* eski sürüm */ } });
     try { $('ver').textContent = 'Sürüm ' + VERSION + ' · Android ' + NATIVE.version(); } catch (e) { /* yok say */ }
   }
   function closeSheet() { $('sheet').hidden = true; $('sheet-bg').hidden = true; }
@@ -816,6 +884,61 @@
     else { $('push-code').select(); }
   }
 
+  /* ---------- yeni bölümler için ortak yardımcılar (birikim, alarm, defter, yedek, yakın) ---------- */
+  // Varlıklar: ad, birim, ondalık, yerel (Truncgil) anahtarı
+  var VARLIK = {
+    GRAM: { ad: 'Gram altın', birim: 'TL', dp: 2, tg: 'gram', miktar: 'gram' },
+    CEYREK: { ad: 'Çeyrek altın', birim: 'TL', dp: 2, tg: 'ceyrek', miktar: 'adet' },
+    YARIM: { ad: 'Yarım altın', birim: 'TL', dp: 2, tg: 'yarim', miktar: 'adet' },
+    TAM: { ad: 'Tam altın', birim: 'TL', dp: 2, tg: 'tam', miktar: 'adet' },
+    ATA: { ad: 'Cumhuriyet (Ata) altını', birim: 'TL', dp: 2, tg: 'ata', miktar: 'adet' },
+    GUMUS_TL: { ad: 'Gümüş (gram)', birim: 'TL', dp: 2, tg: 'gumus', miktar: 'gram' },
+    USD: { ad: 'Dolar', birim: 'TL', dp: 4, tg: 'usd', yahoo: 'USDTRY', miktar: '$' },
+    EUR: { ad: 'Euro', birim: 'TL', dp: 4, tg: 'eur', yahoo: 'EURTRY', miktar: '€' },
+    ONS: { ad: 'Ons altın', birim: '$', dp: 2, spot: 'ONS_SPOT', yahoo: 'GOLD_FUT' },
+    GUMUS_ONS: { ad: 'Gümüş (ons)', birim: '$', dp: 3, spot: 'GUMUS_SPOT', yahoo: 'SILVER_FUT' },
+    BIST: { ad: 'BIST 100', birim: '', dp: 0, yahoo: 'XU100' },
+    BTC: { ad: 'Bitcoin', birim: '$', dp: 0, yahoo: 'BTC' },
+    BRENT: { ad: 'Brent petrol', birim: '$', dp: 2, yahoo: 'BRENT' }
+  };
+  function priceRow(key) { return rows('prices').filter(function (r) { return r.key === key; })[0] || null; }
+  // Bir varlığın şu anki fiyatı. alan: 'satis' (alırken ödenen), 'alis' (satarken alınan) ya da boş.
+  // Sıra arka plan kontrolüyle aynıdır: yerel altında Truncgil; onsta spot, yoksa vadeli; dövizde Yahoo, yoksa serbest piyasa, yoksa TCMB.
+  function fiyat(key, alan) {
+    var v = VARLIK[key], d = state.data;
+    if (!v || !d) return null;
+    var tg = d.local || null, p;
+    if (v.tg && !v.yahoo) {
+      p = tg && tg[v.tg];
+      if (!p) {
+        if (key === 'GRAM') { var t = priceRow('GRAM_ALTIN_TEORIK'); if (t && t.value) return { v: t.value, src: 'teorik gram (Truncgil alınamadı)', time: t.time }; }
+        return null;
+      }
+      return { v: alan === 'alis' ? p[0] : p[1], alis: p[0], satis: p[1], src: (alan === 'alis' ? 'alış' : 'satış') + ' · Truncgil', time: tg.time };
+    }
+    if (v.spot) { var sp = priceRow(v.spot); if (sp && sp.value) return { v: sp.value, src: 'spot · gold-api.com', time: sp.time }; }
+    if (v.yahoo) {
+      var y = priceRow(v.yahoo);
+      if (v.tg && alan) { p = tg && tg[v.tg]; if (p) return { v: alan === 'alis' ? p[0] : p[1], alis: p[0], satis: p[1], src: (alan === 'alis' ? 'alış' : 'satış') + ' · serbest piyasa (Truncgil)', time: tg.time }; }
+      if (y && y.value) return { v: y.value, src: 'Yahoo Finance', time: y.time };
+      if (v.tg) {
+        p = tg && tg[v.tg];
+        if (p) return { v: p[1], alis: p[0], satis: p[1], src: 'satış · serbest piyasa (Truncgil)', time: tg.time };
+        var tc = priceRow(v.yahoo + '_TCMB');
+        if (tc) return { v: tc.ask, alis: tc.bid, satis: tc.ask, src: 'TCMB gösterge kuru', time: tc.time };
+      }
+    }
+    return null;
+  }
+  function lsGetJ(k, def) { try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? def : v; } catch (e) { return def; } }
+  function lsSetJ(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  window.GMIAPP = {
+    data: function () { return state.data; }, native: NATIVE, VARLIK: VARLIK, fiyat: fiyat, priceRow: priceRow,
+    num: num, pct: pct, when: when, sign: sign, parseTr: parseTr, el: el, clear: clear, extLink: extLink, MON: MON,
+    lsGet: lsGetJ, lsSet: lsSetJ, makasGet: makasGet, makasKaydet: makasKaydet, openSheet: openSheet, go: go,
+    refreshBanner: function () { if (state.data) renderBanner(); }
+  };
+
   /* ---------- başlat ---------- */
   document.querySelectorAll('.tab').forEach(function (t) { t.addEventListener('click', function () { go(t.getAttribute('data-tab')); }); });
   window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
@@ -840,7 +963,9 @@
   setupNative();
   window.gmiOnResume = function () {
     if (!state.loading && Date.now() - state.fetchedAt > (CFG.autoRefreshMinutes || 5) * 6e4) load();
-    else if (!$('sheet').hidden) renderBgLog();
+    else if (!$('sheet').hidden) { renderBgLog(); renderNtList(); }
+    if (state.data) renderBanner();
+    try { document.dispatchEvent(new CustomEvent('gmi:resume')); } catch (e) { /* yok say */ }
   };
   if (isStandalone()) $('install-text').textContent = 'Uygulama bu telefonda yüklü.';
 
