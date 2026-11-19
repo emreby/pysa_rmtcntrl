@@ -288,9 +288,11 @@
     var per = st.per || {};
     out.push('Bu ' + TF_NAME[st.tf] + ' grafikte her mum ' + TF_MUM[st.tf] + ' gösterir. Ortalamalar seçili zaman dilimine göre hesaplanır: burada SMA 20 = ' +
       (per[20] ? per[20].txt : '20 mum') + ', SMA 50 = ' + (per[50] ? per[50].txt : '50 mum') + ', SMA 200 = ' + (per[200] ? per[200].txt : '200 mum') + '.');
-    if (isNum(st.first) && isNum(st.c) && st.first > 0) {
-      out.push('Görünen aralıkta (' + st.spanLabel + ') fiyat ' + P(o, st.first) + ' seviyesinden ' + P(o, st.c) + ' seviyesine geldi (' + sp(100 * (st.c / st.first - 1)) +
-        '); en yüksek ' + P(o, st.hiV) + ', en düşük ' + P(o, st.loV) + '.');
+    // görünen aralığın son kapanışı: grafik geçmişe kaydırıldıysa en son fiyat değil, görünen son mum
+    var gc = isNum(st.gc) ? st.gc : st.c;
+    if (isNum(st.first) && isNum(gc) && st.first > 0) {
+      out.push('Görünen aralıkta (' + st.spanLabel + ') fiyat ' + P(o, st.first) + ' seviyesinden ' + P(o, gc) + ' seviyesine ' + (st.sonda === false ? 'gelmişti' : 'geldi') + ' (' + sp(100 * (gc / st.first - 1)) +
+        '); en yüksek ' + P(o, st.hiV) + ', en düşük ' + P(o, st.loV) + '.' + (st.sonda === false ? ' Aşağıdaki gösterge okumaları ise bugüne aittir.' : ''));
     }
     var ms = maStory(maPos(st.c, st.sma20, st.sma50, st.sma200), 'dönemlik', 'Son mum');
     if (ms) out.push(ms);

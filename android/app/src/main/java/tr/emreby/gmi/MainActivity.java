@@ -190,7 +190,15 @@ public class MainActivity extends Activity {
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
-        if (web != null && web.canGoBack()) web.goBack();
-        else super.onBackPressed();
+        if (web == null) {
+            super.onBackPressed();
+            return;
+        }
+        // Önce arayüze sorulur: tam ekran grafik, açık grafik ya da ayarlar penceresi varsa onu kapatır, başka sekmedeyse ana sekmeye döner
+        web.evaluateJavascript("(function(){try{return !!(window.__gmiGeri&&window.__gmiGeri());}catch(e){return false;}})()", v -> {
+            if ("true".equals(v)) return;
+            if (web.canGoBack()) web.goBack();
+            else super.onBackPressed();
+        });
     }
 }

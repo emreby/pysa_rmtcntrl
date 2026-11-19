@@ -179,6 +179,24 @@ body.noscroll { overflow: hidden; }
 .gc-last-t { fill: var(--bg); font-size: 10.5px; font-weight: 700; }
 .gc-cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
 .gc-info { font-size: 12px; color: var(--muted); min-height: 32px; margin-bottom: 4px; }
+.gc-wrap { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.gc-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 6px; }
+.gc-btn { appearance: none; border: 1px solid var(--line); background: var(--panel); color: var(--fg); border-radius: 9px; min-width: 38px; height: 34px; padding: 0 10px; font-size: 17px; line-height: 1; cursor: pointer; }
+.gc-btn:active { background: var(--line); }
+.gc-btn-tam { font-size: 13.5px; font-weight: 600; }
+.gc-ipucu { font-size: 11.5px; color: var(--muted); flex: 1 1 160px; }
+/* tam ekran: yalnız grafik; yatay ekranda araçlar üst satırın sağında */
+#chart-sheet.tam { top: 0; max-height: none; height: 100vh; height: 100dvh; max-width: none; border-radius: 0; padding: 4px 10px env(safe-area-inset-bottom); overflow-y: auto;
+  display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; column-gap: 6px; }
+#chart-sheet.tam[hidden] { display: none; }
+#chart-sheet.tam > :not(.sheet-head):not(#ch-tf):not(#ch-span):not(#ch-tools):not(#ch-box) { display: none !important; }
+#chart-sheet.tam .sheet-head { margin: 0 4px 0 2px; font-size: 15px; }
+#chart-sheet.tam #ch-tools { margin: 2px 0 2px auto; }
+#chart-sheet.tam #ch-box { flex: 1 1 100%; min-width: 0; }
+#chart-sheet.tam #ch-sub, #chart-sheet.tam #ch-close, #chart-sheet.tam .gc-legend, #chart-sheet.tam .gc-forms, #chart-sheet.tam .gc-ipucu { display: none; }
+#chart-sheet.tam .seg { margin: 2px 0; }
+#chart-sheet.tam .chart-box { margin: 2px 0 0; }
+#chart-sheet.tam .gc-info { min-height: 0; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gc-legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 11.5px; color: var(--muted); margin-top: 4px; }
 .gc-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
 .gc-k-ma20 { background: #3b82d6; } .gc-k-ma50 { background: var(--gold); } .gc-k-ma200 { background: #8b5cf6; }

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.location.Address;
 import android.location.Geocoder;
@@ -17,6 +18,9 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 
 import androidx.core.app.NotificationManagerCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import org.json.JSONObject;
 
@@ -136,6 +140,24 @@ public class Bridge {
         main.post(() -> {
             try {
                 act.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx.getPackageName())));
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
+    /** Grafik tam ekranı: açıkken ekran yataya döner (iki yönde), durum ve gezinme çubukları gizlenir (kenardan kaydırınca geçici görünür). */
+    @JavascriptInterface
+    public void tamEkran(final boolean ac) {
+        main.post(() -> {
+            try {
+                act.setRequestedOrientation(ac ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE : ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+                WindowInsetsControllerCompat c = WindowCompat.getInsetsController(act.getWindow(), act.getWindow().getDecorView());
+                if (ac) {
+                    c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                    c.hide(WindowInsetsCompat.Type.systemBars());
+                } else {
+                    c.show(WindowInsetsCompat.Type.systemBars());
+                }
             } catch (Exception ignored) {
             }
         });

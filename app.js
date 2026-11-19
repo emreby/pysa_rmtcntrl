@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var CFG = window.GMI_CONFIG || {};
-  var VERSION = '2.6.0';
+  var VERSION = '2.6.1';
   var NATIVE = window.GMI_NATIVE || null;
   var GA = window.GMIA || null;
   var USE_PHONE = !!(NATIVE && GA);
@@ -401,14 +401,34 @@
   }
 
   function openChart(key) {
-    chartState.key = key;
+    chartState.key = key; chartState.view = null;
     var a = GA && GA.assets && GA.assets[key];
     if (chartState.tf !== 'G' && !(a && a.intra)) chartState.tf = 'G';
     $('chart-sheet').hidden = false; $('chart-bg').hidden = false;
     document.body.classList.add('noscroll');
     drawChart();
   }
-  function closeChart() { $('chart-sheet').hidden = true; $('chart-bg').hidden = true; document.body.classList.remove('noscroll'); chartState.key = null; }
+  function closeChart() {
+    if (chartState.tam) tamEkran(false, true);
+    $('chart-sheet').hidden = true; $('chart-bg').hidden = true; document.body.classList.remove('noscroll'); chartState.key = null;
+  }
+  // Tam ekran: yalnız grafik; Android'de ekran yataya döner ve durum çubuğu gizlenir (geri tuşu ya da düğmeyle çıkılır)
+  function tamEkran(ac, cizme) {
+    chartState.tam = ac == null ? !chartState.tam : !!ac;
+    $('chart-sheet').classList.toggle('tam', chartState.tam);
+    if (NATIVE && typeof NATIVE.tamEkran === 'function') { try { NATIVE.tamEkran(chartState.tam); } catch (e) { /* yok say */ } }
+    $('chart-sheet').scrollTop = 0;
+    if (!cizme) drawChart();
+  }
+  // Android geri tuşu: önce tam ekran, sonra açık pencereler, sonra ana sekme; uygulamadan ancak ana sekmede çıkılır
+  window.__gmiGeri = function () {
+    if (chartState.tam) { tamEkran(false); return true; }
+    if (!$('chart-sheet').hidden) { closeChart(); return true; }
+    if (!$('sheet').hidden) { closeSheet(); return true; }
+    var v = (location.hash || '').slice(1);
+    if (v && v !== 'piyasa') { go('piyasa'); return true; }
+    return false;
+  };
   function lvl(o, lbl, kind) { return o && o.v != null ? { v: o.v, label: lbl, kind: kind, note: (o.labels || []).join(', ') } : null; }
   function drawChart() {
     var key = chartState.key; if (!key) return;
@@ -424,25 +444,41 @@
       b.disabled = tf !== 'G' && !a.intra;
     });
     var labels = (window.GMICHART && GMICHART.SPAN_LABEL[chartState.tf]) || ['kısa', 'orta', 'uzun'];
-    document.querySelectorAll('#ch-span button').forEach(function (b) {
-      var i = +b.getAttribute('data-span'); b.textContent = labels[i]; b.setAttribute('aria-pressed', i === chartState.span ? 'true' : 'false');
-    });
+    function spanBas() {
+      document.querySelectorAll('#ch-span button').forEach(function (b) {
+        var i = +b.getAttribute('data-span'); b.textContent = labels[i]; b.setAttribute('aria-pressed', i === chartState.span && !chartState.view ? 'true' : 'false');
+      });
+    }
+    spanBas();
     var levels = [];
     if (sig) levels = [lvl(sig.s1, 'S1', 's'), lvl(sig.s2, 'S2', 's'), lvl(sig.r1, 'R1', 'r'), lvl(sig.r2, 'R2', 'r')].filter(Boolean);
     else if (t) levels = [['s1', 'S1', 's'], ['s2', 'S2', 's'], ['r1', 'R1', 'r'], ['r2', 'R2', 'r']].map(function (x) { return t[x[0]] != null ? { v: t[x[0]], label: x[1], kind: x[2] } : null; }).filter(Boolean);
     var ser = GA && GA.seriesFor ? GA.seriesFor(key) : null;
     var box = $('ch-box'), st = null, kal = chartState.tf === 'G' && ser && ser.d ? koniAyar(key, ser.d) : null;
-    if (!window.GMICHART || !ser || !ser.d) { clear(box).append(el('p', 'sub', 'Grafikler Android uygulamasında, veriler telefona çekildikten sonra görünür.')); }
-    else st = GMICHART.render(box, { daily: ser.d, hourly: ser.h, tf: chartState.tf, span: chartState.span, dp: dp, unit: unit, name: name, levels: levels, katman: chartState.katman, kalib: kal });
+    var x = sig || sigLike(key), xo = x || { dp: dp, unit: unit };
+    var opt = { daily: ser && ser.d, hourly: ser && ser.h, tf: chartState.tf, span: chartState.span, dp: dp, unit: unit, name: name, levels: levels, katman: chartState.katman, kalib: kal,
+      gorunum: chartState.view, tamMi: !!chartState.tam, tamEkran: function () { tamEkran(); }, araclar: $('ch-tools'),
+      onView: function (v, st2) { chartState.view = v; spanBas(); renderChartRead(st2, xo); } };
+    if (!window.GMICHART || !ser || !ser.d) { clear($('ch-tools')); clear(box).append(el('p', 'sub', 'Grafikler Android uygulamasında, veriler telefona çekildikten sonra görünür.')); }
+    else if (chartState.tam) {
+      // tam ekran: önce tahmini yükseklikle çiz, sonra kalan boşluğa göre bir kez düzelt
+      opt.yukseklik = window.innerHeight - box.getBoundingClientRect().top - 60;
+      st = GMICHART.render(box, opt);
+      var sv = box.querySelector('svg');
+      if (sv) {
+        var fark = window.innerHeight - sv.getBoundingClientRect().bottom - 6;
+        if (Math.abs(fark) > 3) { opt.yukseklik += fark; st = GMICHART.render(box, opt); }
+      }
+    }
+    else st = GMICHART.render(box, opt);
     document.querySelectorAll('#ch-katman button').forEach(function (b) {
       var k = b.getAttribute('data-k'); b.setAttribute('aria-pressed', chartState.katman[k] ? 'true' : 'false');
       b.hidden = k === 'koni' && chartState.tf !== 'G';
     });
-    var x = sig || sigLike(key);
-    renderForm(st, x || { dp: dp, unit: unit }, key);
-    renderTahmin(st, x || { dp: dp, unit: unit }, kal);
+    renderForm(st, xo, key);
+    renderTahmin(st, xo, kal);
     renderInd(st);
-    renderChartRead(st, x || { dp: dp, unit: unit });
+    renderChartRead(st, xo);
     renderAssetYorum(x);
     renderSigDetail(sig);
   }
@@ -1063,8 +1099,8 @@
   $('ch-terms').addEventListener('click', openTerms);
   $('btn-bt').addEventListener('click', function () { runBacktest(true); });
   $('mk-hesapla').addEventListener('click', makasHesapla);
-  document.querySelectorAll('#ch-tf button').forEach(function (b) { b.addEventListener('click', function () { if (b.disabled) return; chartState.tf = b.getAttribute('data-tf'); drawChart(); }); });
-  document.querySelectorAll('#ch-span button').forEach(function (b) { b.addEventListener('click', function () { chartState.span = +b.getAttribute('data-span'); drawChart(); }); });
+  document.querySelectorAll('#ch-tf button').forEach(function (b) { b.addEventListener('click', function () { if (b.disabled) return; chartState.tf = b.getAttribute('data-tf'); chartState.view = null; drawChart(); }); });
+  document.querySelectorAll('#ch-span button').forEach(function (b) { b.addEventListener('click', function () { chartState.span = +b.getAttribute('data-span'); chartState.view = null; drawChart(); }); });
   document.querySelectorAll('#ch-katman button').forEach(function (b) {
     b.addEventListener('click', function () {
       var k = b.getAttribute('data-k'); chartState.katman[k] = !chartState.katman[k];
