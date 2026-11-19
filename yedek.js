@@ -3,7 +3,7 @@
    Dosya yalnız kullanıcının seçtiği yerde durur; uygulama hiçbir yere göndermez. */
 (function () {
   'use strict';
-  var KEYS = ['gmi-birikim', 'gmi-defter', 'gmi-makas', 'gmi-alarm', 'gmi-alarm-hit', 'gmi-sinyal-log', 'gmi-uyarilar', 'gmi-gecmis-test'];
+  var KEYS = ['gmi-birikim', 'gmi-defter', 'gmi-makas', 'gmi-alarm', 'gmi-alarm-hit', 'gmi-sinyal-log', 'gmi-uyarilar', 'gmi-gecmis-test', 'gmi-tahmin-log', 'gmi-katman'];
   var bekleyen = null;
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -53,6 +53,7 @@
     p.push(sayi(ls['gmi-defter'] || '[]') + ' fiyat defteri kaydı');
     if (ls['gmi-makas']) p.push('alış-satış farkı');
     if (ls['gmi-sinyal-log']) p.push('karne');
+    if (ls['gmi-tahmin-log']) p.push('gelecek konisi kayıtları');
     return p.join(', ');
   }
 

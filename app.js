@@ -3,13 +3,14 @@
 (function () {
   'use strict';
   var CFG = window.GMI_CONFIG || {};
-  var VERSION = '2.5.0';
+  var VERSION = '2.6.0';
   var NATIVE = window.GMI_NATIVE || null;
   var GA = window.GMIA || null;
   var USE_PHONE = !!(NATIVE && GA);
   var SIG_CLS = { GAL: 'sg-gal', AL: 'sg-al', NOTR: 'sg-notr', SAT: 'sg-sat', GSAT: 'sg-gsat', VERI: 'sg-veri' };
   var STRIP = ['GRAM', 'GOLD_FUT', 'SILVER_FUT', 'USDTRY', 'XU100', 'BTC'];
-  var chartState = { key: null, tf: 'G', span: 1 };
+  var KATMAN_VARS = { sr: true, trend: true, form: true, koni: true, mum: true, fib: false };
+  var chartState = { key: null, tf: 'G', span: 1, katman: (function () { try { return Object.assign({}, KATMAN_VARS, JSON.parse(localStorage.getItem('gmi-katman') || '{}')); } catch (e) { return Object.assign({}, KATMAN_VARS); } })() };
   var MON = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
   var VIEWS = ['piyasa', 'altin', 'birikim', 'iller', 'teknik', 'gundem', 'karne'];
   var YZ = window.GMIYORUM || null;
@@ -89,7 +90,21 @@
       $('m-updated').textContent = 'Veri alınamadı. İnternet bağlantınızı kontrol edip yenileyin.';
       return;
     }
-    renderHeader(); renderStrip(); renderMarketYorum(); renderAlerts(); renderPrices(); renderGold(); renderSpot(); renderMakas(); renderIller(); renderSignals(); renderTech(); renderAgenda(); renderPerf(); renderBt(); renderBanner();
+    // tahmin defteri: ekran çizildikten sonra (günde bir kez kayıt; ayar yoksa varlık başına kısa bir hesap gerekir)
+    if (USE_PHONE && window.GMITAHMIN) {
+      clearTimeout(render.tk);
+      render.tk = setTimeout(function () {
+        try {
+          var btd = GA.backtestData ? GA.backtestData() : null;
+          GMITAHMIN.gunluk(['GRAM', 'GOLD_FUT', 'SILVER_FUT', 'USDTRY', 'EURTRY', 'XU100', 'BTC', 'BRENT'].map(function (k) {
+            var ser = GA.seriesFor ? GA.seriesFor(k) : null, bk = btd && btd.assets && btd.assets[k];
+            return { key: k, ad: (GA.assets[k] || {}).name || k, bars: ser && ser.d, kal: bk && bk.koni && bk.koni.h20 && bk.koni.h20.k80 != null ? bk.koni : null };
+          }));
+          renderTahminKarne();
+        } catch (e) { /* yok say */ }
+      }, 1200);
+    }
+    renderHeader(); renderStrip(); renderMarketYorum(); renderAlerts(); renderPrices(); renderGold(); renderSpot(); renderMakas(); renderIller(); renderSignals(); renderTech(); renderAgenda(); renderPerf(); renderBt(); renderTahminKarne(); renderBanner();
     try { document.dispatchEvent(new CustomEvent('gmi:data')); } catch (e) { /* yok say */ }
   }
 
@@ -416,10 +431,17 @@
     if (sig) levels = [lvl(sig.s1, 'S1', 's'), lvl(sig.s2, 'S2', 's'), lvl(sig.r1, 'R1', 'r'), lvl(sig.r2, 'R2', 'r')].filter(Boolean);
     else if (t) levels = [['s1', 'S1', 's'], ['s2', 'S2', 's'], ['r1', 'R1', 'r'], ['r2', 'R2', 'r']].map(function (x) { return t[x[0]] != null ? { v: t[x[0]], label: x[1], kind: x[2] } : null; }).filter(Boolean);
     var ser = GA && GA.seriesFor ? GA.seriesFor(key) : null;
-    var box = $('ch-box'), st = null;
+    var box = $('ch-box'), st = null, kal = chartState.tf === 'G' && ser && ser.d ? koniAyar(key, ser.d) : null;
     if (!window.GMICHART || !ser || !ser.d) { clear(box).append(el('p', 'sub', 'Grafikler Android uygulamasında, veriler telefona çekildikten sonra görünür.')); }
-    else st = GMICHART.render(box, { daily: ser.d, hourly: ser.h, tf: chartState.tf, span: chartState.span, dp: dp, unit: unit, name: name, levels: levels });
+    else st = GMICHART.render(box, { daily: ser.d, hourly: ser.h, tf: chartState.tf, span: chartState.span, dp: dp, unit: unit, name: name, levels: levels, katman: chartState.katman, kalib: kal });
+    document.querySelectorAll('#ch-katman button').forEach(function (b) {
+      var k = b.getAttribute('data-k'); b.setAttribute('aria-pressed', chartState.katman[k] ? 'true' : 'false');
+      b.hidden = k === 'koni' && chartState.tf !== 'G';
+    });
     var x = sig || sigLike(key);
+    renderForm(st, x || { dp: dp, unit: unit }, key);
+    renderTahmin(st, x || { dp: dp, unit: unit }, kal);
+    renderInd(st);
     renderChartRead(st, x || { dp: dp, unit: unit });
     renderAssetYorum(x);
     renderSigDetail(sig);
@@ -435,6 +457,69 @@
   function yorumCtx() {
     var list = rows('signals');
     return { gold: rows('gold'), find: function (k) { return list.filter(function (r) { return r.key === k; })[0] || null; } };
+  }
+  var TF_AD = { G: 'günlük', '4S': '4 saatlik', '1S': '1 saatlik' };
+  // Koninin bu varlıktaki ayarı: haftalık 10 yıllık testten, yoksa grafikteki 2 yıllık veriden (önbellekli)
+  var KONI_AYAR = {};
+  function koniAyar(key, bars) {
+    var bt = btFor(key);
+    if (bt && bt.koni && bt.koni.h20 && bt.koni.h20.k80 != null) return bt.koni;
+    if (!window.GMITAHMIN || !bars || bars.length < 300) return null;
+    var id = key + ':' + bars.length + ':' + bars[bars.length - 1].t;
+    if (!KONI_AYAR[id]) { try { KONI_AYAR = {}; KONI_AYAR[id] = GMITAHMIN.test(bars); } catch (e) { return null; } }
+    return KONI_AYAR[id];
+  }
+  // Grafiksel yorum: çizgiler, formasyonlar, bölgeler, Fibonacci, uyumsuzluk, mumlar + formasyonların bu varlıktaki geçmişi
+  function renderForm(st, x, key) {
+    var box = clear($('ch-form'));
+    if (!st || !st.form || !window.GMIFORM) { box.hidden = true; return; }
+    var bt = btFor(key), G = chartState.tf === 'G' && bt && bt.form ? bt.form : null;
+    if (!G) {
+      try { G = GMIFORM.gecmis(st.seri); } catch (e) { G = null; }
+      if (G && chartState.tf !== 'G') { G.etiket = 'bu grafiğin verisinde (' + TF_AD[chartState.tf] + ', son ≈3 ay)'; G.birim = 'mum'; }
+    }
+    var lines = GMIFORM.yorum(st.form, { dp: x.dp, unit: x.unit, gecmis: G, numara: chartState.katman.form });
+    box.hidden = !lines.length;
+    if (!lines.length) return;
+    box.append(el('h3', 'yorum-h', 'Grafiksel yorum (' + TF_AD[chartState.tf] + ' grafik)'));
+    var ul = el('ul', 'yorum-list');
+    lines.forEach(function (t) { ul.append(el('li', null, t)); });
+    box.append(ul);
+    box.append(el('p', 'sub', 'Çizgiler ve formasyonlar sabit kurallarla otomatik bulunur. Formasyon hedefi klasik ölçüm kuralıdır (formasyonun yüksekliği kırılım noktasına eklenir); gerçekleşeceği anlamına gelmez. "Kez onaylandı" sayıları bu varlığın kendi geçmiş verisinden hesaplanır.'));
+  }
+  // Gelecek görünümü: olasılık konisi, seviyelere değme olasılığı, yöntemin geçmiş testi
+  function renderTahmin(st, x, test) {
+    var box = clear($('ch-tahmin'));
+    if (!st || !st.seri || chartState.tf !== 'G' || !window.GMITAHMIN) { box.hidden = true; return; }
+    var sv = [];
+    [['R1', x.r1], ['S1', x.s1], ['R2', x.r2], ['S2', x.s2]].forEach(function (z) { if (z[1] && z[1].v != null) sv.push({ ad: z[0], v: z[1].v }); });
+    if (st.form) st.form.formasyonlar.forEach(function (pt) { if (pt.durum === 'onaylandı' || pt.durum === 'oluşuyor') sv.push({ ad: pt.ad + ' hedefi', v: pt.hedef }); });
+    var Y = GMITAHMIN.yorum(st.seri, { dp: x.dp, unit: x.unit, seviyeler: sv, test: test });
+    box.hidden = !Y;
+    if (!Y) return;
+    box.append(el('h3', 'yorum-h', 'Gelecek görünümü (olasılık)'));
+    var ul = el('ul', 'yorum-list');
+    Y.satir.forEach(function (t) { ul.append(el('li', null, t)); });
+    box.append(ul);
+    box.append(el('p', 'sub', 'Bu bölüm fiyatın nereye gideceğini söylemez; geçmiş hareketlere ve bugünkü oynaklığa göre olası aralığı gösterir. Grafikteki mavi koni aynı hesaptır. Aralık, bu varlığın geçmişinde söylediği oranda tutacak biçimde ayarlanır; ani haber ve şoklarda yine de dışına çıkılabilir. Uygulama bu aralıkların tutup tutmadığını her gün kaydeder (Karne sekmesi).'));
+  }
+  // Tüm göstergeler tablosu
+  function renderInd(st) {
+    var det = $('ch-ind'), body = clear($('ch-ind-body')), T = st && st.form && st.form.gostergeler;
+    det.hidden = !T;
+    if (!T) return;
+    det.querySelector('summary').textContent = 'Tüm göstergeler (' + T.rows.length + '): ' + T.yukari + ' yükseliş, ' + T.asagi + ' düşüş, ' + T.notr + ' nötr';
+    var grp = null, tbl = el('table', 'tbl ind-tbl'), tb = el('tbody');
+    T.rows.forEach(function (r) {
+      if (r.grp !== grp) { grp = r.grp; var h = el('tr', 'ind-grp'); var th = el('th', null, grp); th.colSpan = 2; h.append(th); tb.append(h); }
+      var tr = el('tr'), c1 = el('td');
+      c1.append(el('div', 'ind-ad', r.ad), el('div', 'ind-deg', r.deger));
+      tr.append(c1, td(r.okuma, r.yon > 0 ? 'up' : (r.yon < 0 ? 'down' : 'flat'))); tb.append(tr);
+    });
+    tbl.append(tb);
+    var tw = el('div', 'tw'); tw.append(tbl);
+    body.append(tw);
+    body.append(el('p', 'sub', 'Bu göstergelerin çoğu aynı fiyat verisinden türediği için birbirini tekrarlar: çoğunluğun aynı yönü göstermesi isabeti artırmaz. Geçmiş testi (Karne) gösterge oylarının bu varlıklarda yönü rastgele bir günden belirgin biçimde iyi bilmediğini gösterdi.' + (T.hacim ? '' : ' Bu varlıkta hacim verisi olmadığı için hacim göstergeleri yok.')));
   }
   function renderChartRead(st, x) {
     var box = clear($('ch-read'));
@@ -546,6 +631,27 @@
         renderBt(); renderSignals();
         if (chartState.key && !$('chart-sheet').hidden) drawChart();
       });
+  }
+  function renderTahminKarne() {
+    var box = clear($('tk-sum'));
+    if (!window.GMITAHMIN) return;
+    var K = GMITAHMIN.karne();
+    if (!K.h5.n && !K.h20.n) {
+      box.append(el('p', 'sub', K.bekleyen ? K.bekleyen + ' aralık kaydedildi; ilk sonuçlar 5 işlem günü sonra görünür (kayıt başlangıcı ' + when(K.ilk) + ').' : 'Henüz kayıt yok; uygulama veri çektikçe kayıt başlar.'));
+      return;
+    }
+    var tiles = el('div', 'tiles');
+    [['5 gün', K.h5], ['20 gün', K.h20]].forEach(function (z) {
+      var c = el('div', 'card');
+      c.append(el('div', 'pname', z[0] + ' sonra: %80\'lik aralık tuttu'), el('div', 'pval', z[1].n ? '%' + num(100 * z[1].b80 / z[1].n, 0) : '—'),
+        el('div', 'pmeta', z[1].n ? z[1].n + ' değerlendirme · %50\'lik aralık %' + num(100 * z[1].b50 / z[1].n, 0) + ' tuttu' : 'henüz vadesi gelmedi'));
+      tiles.append(c);
+    });
+    box.append(tiles);
+    var vl = Object.keys(K.varlik).filter(function (k) { return K.varlik[k].n >= 5; }).map(function (k) { var v = K.varlik[k]; return k + ' %' + num(100 * v.b80 / v.n, 0) + ' (' + v.n + ')'; });
+    if (vl.length) box.append(el('p', 'sub', 'Varlık bazında %80\'lik aralığın tutma oranı (değerlendirme sayısı): ' + vl.join(' · ') + '.'));
+    var az = K.h5.n + K.h20.n < 40;
+    box.append(el('p', 'sub', (az ? 'Değerlendirme sayısı henüz az; oranlar zamanla oturur. ' : '') + 'Bekleyen kayıt: ' + K.bekleyen + '. Kayıt başlangıcı: ' + when(K.ilk) + '.'));
   }
   function renderBt() {
     var meta = $('bt-meta'), tb = clear($('bt-table').tBodies[0]), sum = $('bt-sum'), btn = $('btn-bt');
@@ -959,6 +1065,13 @@
   $('mk-hesapla').addEventListener('click', makasHesapla);
   document.querySelectorAll('#ch-tf button').forEach(function (b) { b.addEventListener('click', function () { if (b.disabled) return; chartState.tf = b.getAttribute('data-tf'); drawChart(); }); });
   document.querySelectorAll('#ch-span button').forEach(function (b) { b.addEventListener('click', function () { chartState.span = +b.getAttribute('data-span'); drawChart(); }); });
+  document.querySelectorAll('#ch-katman button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var k = b.getAttribute('data-k'); chartState.katman[k] = !chartState.katman[k];
+      try { localStorage.setItem('gmi-katman', JSON.stringify(chartState.katman)); } catch (e) { /* yok say */ }
+      drawChart();
+    });
+  });
   $('ver').textContent = 'Sürüm ' + VERSION;
   setupNative();
   window.gmiOnResume = function () {

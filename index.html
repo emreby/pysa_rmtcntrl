@@ -236,6 +236,10 @@
     </div>
     <button type="button" class="btn btn-ghost" id="btn-bt" hidden>Geçmiş testini şimdi yenile</button>
 
+    <h2 class="h2">Gelecek konisi karnesi</h2>
+    <p class="sub">Uygulama her gün ana varlıklar için 5 ve 20 işlem günü sonrasının %80 ve %50 olasılık aralıklarını kaydeder; vadesi gelince fiyatın aralıkta kalıp kalmadığına bakar. Koni iyi ayarlıysa oranlar %80 ve %50'ye yakın çıkar. Bu, yön tahmininin değil, aralığın ne kadar güvenilir olduğunun ölçüsüdür.</p>
+    <div id="tk-sum"></div>
+
     <h2 class="h2">Bu telefondaki karne</h2>
     <p class="sub">Her yükseliş ve düşüş eğilimi etiketi verildiği andaki fiyatla kaydedilir, 24–72 saat sonra uygulama açıldığında o anki fiyatla değerlendirilir. ±%0,25 içindeki hareket "yatay" sayılır.</p>
     <div id="sig-stats"></div>
@@ -290,7 +294,18 @@
   <div class="seg" id="ch-span" role="group" aria-label="Aralık">
     <button type="button" data-span="0" aria-pressed="false">kısa</button><button type="button" data-span="1" aria-pressed="true">orta</button><button type="button" data-span="2" aria-pressed="false">uzun</button>
   </div>
+  <div class="chips" id="ch-katman" role="group" aria-label="Grafik katmanları">
+    <button type="button" data-k="sr" aria-pressed="true">Bölgeler</button>
+    <button type="button" data-k="trend" aria-pressed="true">Trend</button>
+    <button type="button" data-k="form" aria-pressed="true">Formasyon</button>
+    <button type="button" data-k="koni" aria-pressed="true">Gelecek</button>
+    <button type="button" data-k="mum" aria-pressed="true">Mum</button>
+    <button type="button" data-k="fib" aria-pressed="false">Fibonacci</button>
+  </div>
   <div id="ch-box" class="chart-box"></div>
+  <div id="ch-form" class="yorum"></div>
+  <div id="ch-tahmin" class="yorum"></div>
+  <details id="ch-ind" class="yorum ind-det" hidden><summary>Tüm göstergeler</summary><div id="ch-ind-body"></div></details>
   <div id="ch-read" class="yorum"></div>
   <div id="ch-yorum" class="yorum"></div>
   <div id="ch-sig"></div>
@@ -392,6 +407,8 @@
 <script src="analysis.js"></script>
 <script src="chart.js"></script>
 <script src="yorum.js"></script>
+<script src="formasyon.js"></script>
+<script src="tahmin.js"></script>
 <script src="iller.js"></script>
 <script src="yakin.js"></script>
 <script src="birikim.js"></script>

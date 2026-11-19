@@ -676,7 +676,7 @@
   /* ---------------- geçmiş testi: 10 yıllık günlük veriyle, haftada bir ---------------- */
   // Uygulamanın 7 oylu günlük kuralı geçmişin her gününe uygulanır. Geçmiş 4 saat/1 saat verisi olmadığı için
   // kısa vade onayı testte yoktur. Seriler saklanmaz; yalnız sayımlar saklanır (birkaç KB).
-  var BT = 'gmi-gecmis-test', BT_V = 1, BT_AGE = 7 * 86400, BT_NOSTRAT = { VIX: 1, US10Y: 1 };
+  var BT = 'gmi-gecmis-test', BT_V = 2, BT_AGE = 7 * 86400, BT_NOSTRAT = { VIX: 1, US10Y: 1 };
   function btCode(ds) { return ds == null ? null : (ds >= 5 ? 'GAL' : (ds >= 3 ? 'AL' : (ds <= -5 ? 'GSAT' : (ds <= -3 ? 'SAT' : 'NOTR')))); }
   function btCodes(b) {
     var c = b.map(function (x) { return x.c; }), s50 = ENG.smaN(c, 50), s200 = ENG.smaN(c, 200), e9 = ENG.ema(c, 9), e21 = ENG.ema(c, 21);
@@ -749,6 +749,9 @@
     var o = { bas: trt(b[from].t).slice(0, 10), son: trt(b[b.length - 1].t).slice(0, 10), gun: b.length - from,
       h5: btStats(b, cd, 5, from), h20: btStats(b, cd, 20, from), h5_2y: btStats(b, cd, 5, i2), bugun: cd[cd.length - 1] };
     if (!BT_NOSTRAT[key]) { o.st = btStrat(b, cd, from); o.st2y = btStrat(b, cd, i2); }
+    // formasyonların geçmişteki sonuçları ve olasılık konisinin tutma oranı (10 yıllık günlük veri)
+    try { if (window.GMIFORM) o.form = window.GMIFORM.gecmis(b); } catch (e) { /* yok say */ }
+    try { if (window.GMITAHMIN) o.koni = window.GMITAHMIN.test(b); } catch (e) { /* yok say */ }
     return o;
   }
   var btBusy = null;

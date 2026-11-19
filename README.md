@@ -7,7 +7,10 @@ Kişisel piyasa takip uygulaması: altın, döviz, emtia, borsalar ve faiz. Ara�
 İndirme: [gmi-piyasa.apk](https://github.com/emreby/pysa_rmtcntrl/releases/download/uygulama/gmi-piyasa.apk) (her değişiklikte GitHub'da otomatik derlenir; sürüm sayfası: Releases → "uygulama").
 
 - **Veri ve analiz telefonda:** Uygulama açılınca fiyatları ve grafik verisini doğrudan telefondan çeker (Yahoo Finance, Truncgil, Google Haberler başlıkları, Forex Factory takvimi). Göstergeler, destek/direnç ve sinyaller telefonda hesaplanır. Bilgisayar gerekmez.
-- **Teknik grafikler:** Mum grafiği, SMA 20/50/200, Bollinger bandı, destek/direnç çizgileri, RSI ve MACD; günlük, 4 saatlik ve 1 saatlik.
+- **Teknik grafikler:** Mum grafiği, SMA 20/50/200, Bollinger bandı, destek/direnç çizgileri, RSI ve MACD; günlük, 4 saatlik ve 1 saatlik. Açılıp kapanabilen katmanlar: destek/direnç bölgeleri, trend çizgileri, formasyonlar (ikili tepe/dip, OBO/TOBO, üçgenler, takozlar, dikdörtgen, kanallar, bayraklar; hedef ve bozulma seviyesiyle), mum formasyonları, Fibonacci ve RSI/MACD uyumsuzlukları.
+- **Grafiksel yorum:** Bulunan çizgi ve formasyonların sade Türkçe açıklaması; her formasyonun bu varlığın kendi geçmişinde kaç kez onaylandığı, önce hedefe mi bozulma seviyesine mi gittiği ve aynı mesafelerle rastgele günlerin sonucuyla karşılaştırması. 20 göstergenin tablosu (trend, momentum, oynaklık, hacim).
+- **Gelecek görünümü (olasılık konisi):** Günlük grafikte sağda 20 işlem günlük %50 ve %80 olasılık aralığı. Son 2 yılın hareket dağılımından ve bugünkü oynaklıktan hesaplanır; varlığın geçmiş testinde aralık söylediği oranda tutmadıysa o varlık için genişletilir/daraltılır. Seviyelere 20 gün içinde değme olasılıkları. Yön tahmini değildir: orta değerin yön isabeti "hep yükselir/düşer" demekle karşılaştırılarak gösterilir.
+- **Koni karnesi:** Uygulama her gün 8 ana varlık için 5 ve 20 günlük aralıkları kaydeder, vadesi gelince tutup tutmadığını sayar (Karne sekmesi).
 - **Eğilim etiketleri:** Göstergelerin oylamasından kurala göre güçlü yükseliş / yükseliş / yön belirsiz / düşüş / güçlü düşüş eğilimi. Etiketler tahmin ya da al-sat emri değildir.
 - **Geçmiş testi:** Günlük kural son 10 yılın her gününe uygulanır (haftada bir, telefonda); her etiketten 1 hafta ve 1 ay sonra fiyatın ne sıklıkla yükseldiği ve etikete göre girip çıkmanın maliyetli sonucu gösterilir. 13 Kasım 2026 testinde etiketler yönü rastgele bir günden daha iyi göstermedi.
 - **Spot ons ve alış-satış farkı:** Vadeli onsun yanında spot ons (gold-api.com); bankanın ya da kuyumcunun gram fiyatlarıyla başa baş hesabı.
@@ -36,6 +39,8 @@ https://emreby.github.io/pysa_rmtcntrl/ — `data/app_data.json` dosyasını oku
 - `analysis.js`: telefonda veri toplama, teknik analiz ve sinyaller
 - `chart.js`: teknik grafikler
 - `yorum.js`: kural tabanlı yorum motoru
+- `formasyon.js`: destek/direnç bölgeleri, trend çizgileri, formasyonlar, mum formasyonları, Fibonacci, uyumsuzluk, gösterge tablosu ve formasyonların geçmiş sonuçları
+- `tahmin.js`: olasılık konisi, ayarı ve geçmiş testi, değme olasılıkları, tahmin defteri
 - `iller.js`: kuyumcular odaları listesi (elle doğrulanır)
 - `yakin.js`: konum, gömülü Google haritası, il/oda eşleşmesi
 - `birikim.js`: birikim takibi ve düzenli alım hesabı
