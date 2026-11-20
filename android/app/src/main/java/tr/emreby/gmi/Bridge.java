@@ -1,6 +1,9 @@
 package tr.emreby.gmi;
 
 import android.app.Activity;
+import android.app.ActivityManager;
+import android.app.usage.UsageStatsManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -8,6 +11,7 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.location.Address;
 import android.location.Geocoder;
+import android.net.ConnectivityManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -22,6 +26,7 @@ import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.util.List;
@@ -88,6 +93,62 @@ public class Bridge {
         prefs().edit().putBoolean("bg_on", on).apply();
         if (on) Scheduler.ensure(ctx);
         else Scheduler.cancel(ctx);
+    }
+
+    /** Veri tasarrufu: bu uygulamanın arka planda mobil veri kullanmasına izin verme ekranı. */
+    @JavascriptInterface
+    public void openDataSettings() {
+        main.post(() -> {
+            try {
+                act.startActivity(new Intent(Settings.ACTION_IGNORE_BACKGROUND_DATA_RESTRICTIONS_SETTINGS, Uri.parse("package:" + ctx.getPackageName())));
+            } catch (Exception e) {
+                try {
+                    act.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx.getPackageName())));
+                } catch (Exception ignored) {
+                }
+            }
+        });
+    }
+
+    /** Üreticinin "otomatik başlatma" / arka plan izni ekranı (Xiaomi, Huawei, Honor, Oppo, Realme, OnePlus, Vivo, Samsung, Asus);
+     *  ekran adları sürüme göre değiştiği için sırayla denenir, hiçbiri açılmazsa uygulama bilgisi ekranı açılır. */
+    @JavascriptInterface
+    public void openAutostart() {
+        final String m = (Build.MANUFACTURER == null ? "" : Build.MANUFACTURER).toLowerCase(Locale.ROOT);
+        final String[][] aday;
+        if (m.contains("xiaomi") || m.contains("redmi") || m.contains("poco")) aday = new String[][]{
+                {"com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"}};
+        else if (m.contains("huawei") || m.contains("honor")) aday = new String[][]{
+                {"com.hihonor.systemmanager", "com.hihonor.systemmanager.startupmgr.ui.StartupNormalAppListActivity"},
+                {"com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"},
+                {"com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"}};
+        else if (m.contains("oppo") || m.contains("realme") || m.contains("oneplus")) aday = new String[][]{
+                {"com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"},
+                {"com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"},
+                {"com.oplus.safecenter", "com.oplus.safecenter.permission.startup.StartupAppListActivity"},
+                {"com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity"}};
+        else if (m.contains("vivo") || m.contains("iqoo")) aday = new String[][]{
+                {"com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"},
+                {"com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"}};
+        else if (m.contains("samsung")) aday = new String[][]{
+                {"com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity"},
+                {"com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity"}};
+        else if (m.contains("asus")) aday = new String[][]{
+                {"com.asus.mobilemanager", "com.asus.mobilemanager.autostart.AutoStartActivity"}};
+        else aday = new String[0][];
+        main.post(() -> {
+            for (String[] c : aday) {
+                try {
+                    act.startActivity(new Intent().setComponent(new ComponentName(c[0], c[1])));
+                    return;
+                } catch (Exception ignored) {
+                }
+            }
+            try {
+                act.startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + ctx.getPackageName())));
+            } catch (Exception ignored) {
+            }
+        });
     }
 
     @JavascriptInterface
@@ -184,6 +245,21 @@ public class Bridge {
             PackageInfo pi = ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0);
             o.put("kurulum", pi.firstInstallTime);
             o.put("guncelleme", pi.lastUpdateTime);
+            o.put("tetik", p.getLong("tetik_sonraki", 0));
+            try {
+                o.put("calisma", new JSONArray(p.getString("bg_calisma", "[]")));
+            } catch (Exception ignored) {
+            }
+            if (Build.VERSION.SDK_INT >= 28) {
+                // Android'in sınıflaması: 5 muaf, 10 etkin, 20 sık, 30 ara sıra, 40 nadir, 45 kısıtlı (yüksek değer = daha çok erteleme)
+                UsageStatsManager us = (UsageStatsManager) ctx.getSystemService(Context.USAGE_STATS_SERVICE);
+                if (us != null) o.put("kova", us.getAppStandbyBucket());
+                ActivityManager am = (ActivityManager) ctx.getSystemService(Context.ACTIVITY_SERVICE);
+                if (am != null) o.put("kisitli", am.isBackgroundRestricted());
+            }
+            // Veri tasarrufu: 1 kapalı, 2 bu uygulamaya izinli, 3 arka planda mobil veri engelli
+            ConnectivityManager cm = (ConnectivityManager) ctx.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null) o.put("veri", cm.getRestrictBackgroundStatus());
         } catch (Exception ignored) {
         }
         return o.toString();

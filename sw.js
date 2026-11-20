@@ -1,5 +1,5 @@
 // GMI Piyasa — service worker: çevrimdışı çalışma ve bildirimler
-const CACHE = 'gmi-piyasa-v9';
+const CACHE = 'gmi-piyasa-v10';
 const SHELL = [
   './', 'index.html', 'app.css', 'app.js', 'config.js', 'manifest.webmanifest', 'engine/ta_engine.js', 'analysis.js', 'chart.js', 'yorum.js', 'formasyon.js', 'tahmin.js', 'iller.js', 'yakin.js', 'birikim.js', 'alarm.js', 'defter.js', 'yedek.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/badge-96.png', 'data/app_data.json'

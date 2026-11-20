@@ -188,6 +188,13 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onStop() {
+        super.onStop();
+        // Uygulamadan çıkınca yedek alarm yeniden kurulur: bir sonraki kontrol ≈15 dakika sonra
+        Tetik.kur(this);
+    }
+
+    @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
         if (web == null) {

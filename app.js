@@ -3,7 +3,7 @@
 (function () {
   'use strict';
   var CFG = window.GMI_CONFIG || {};
-  var VERSION = '2.6.1';
+  var VERSION = '2.6.2';
   var NATIVE = window.GMI_NATIVE || null;
   var GA = window.GMIA || null;
   var USE_PHONE = !!(NATIVE && GA);
@@ -149,6 +149,11 @@
       var fix = el('button', 'btn btn-sm', ns.btn);
       fix.addEventListener('click', ns.act);
       row.append(fix);
+      if (ns.kapat) {
+        var later = el('button', 'btn btn-sm btn-ghost', 'Şimdi değil');
+        later.addEventListener('click', function () { lsSetJ(ns.kapat, Date.now()); renderBanner(); });
+        row.append(later);
+      }
       b.append(row);
     }
     b.hidden = !b.firstChild;
@@ -164,16 +169,55 @@
     var sa = Math.round(dk / 60);
     return sa < 48 ? sa + ' saat' + (ek ? 'tir' : '') : Math.round(sa / 24) + ' gün' + (ek ? 'dür' : '');
   }
-  // Ana ekrandaki uyarı: yalnız bildirimlerin gelmesini engelleyen bir durum varsa.
+  // Arka plan kontrollerinin son 24 saati (ya da güncellemeden beri geçen süre): kaç kez çalıştı, kaç kez beklenirdi,
+  // kaçında internete erişilemedi. Beklenen: 07–24 TSİ arası 15, gece 60 dakikada bir (yedek alarmın aralığı).
+  function calismaOzet(d) {
+    var a = (d && d.calisma) || [], simdi = d.simdi, bas = Math.max(simdi - 864e5, d.guncelleme || d.kurulum || 0);
+    var r = a.filter(function (x) { return x[0] >= bas && x[0] <= simdi && x[1] !== 'e'; });
+    var beklenen = 0;
+    for (var t = bas; t < simdi; t += 36e5) {
+      var saat = new Date(t + 3 * 36e5).getUTCHours(), dilim = Math.min(36e5, simdi - t) / 36e5;
+      beklenen += (saat < 7 ? 1 : 4) * dilim;
+    }
+    var bosluk = 0, onceki = bas;
+    r.map(function (x) { return x[0]; }).sort(function (x, y) { return x - y; }).concat([simdi]).forEach(function (x) { bosluk = Math.max(bosluk, x - onceki); onceki = x; });
+    return { n: r.length, alarm: r.filter(function (x) { return x[1] === 'a'; }).length, veriYok: r.filter(function (x) { return x[2] === 0; }).length,
+      beklenen: Math.max(1, Math.round(beklenen)), sure: simdi - bas, bosluk: bosluk };
+  }
+  function ayarlaraGit() { openSheet(); setTimeout(function () { var x = $('nt-list'); if (x) x.scrollIntoView({ block: 'start' }); }, 60); }
+  // Ana ekrandaki uyarı: yalnız bildirimlerin gelmesini engelleyen ya da geciktiren bir durum varsa (en önemlisi).
   function ntSorun() {
     var d = ntDurum();
     if (!d) return null;
     if (d.izin === false) return { text: 'Bildirimler kapalı: uyarılar ve fiyat alarmları gelmez.', btn: 'Aç', act: function () { NATIVE.requestNotifications(); setTimeout(renderBanner, 2500); } };
     if (d.kanal === 0) return { text: '"Piyasa uyarıları" bildirimleri kapatılmış.', btn: 'Aç', act: function () { NATIVE.openNotificationSettings(); } };
-    var gec = d.simdi - (d.son || d.guncelleme || d.kurulum || d.simdi);
-    if (d.arka && gec > 3 * 36e5) return { text: 'Arka plan kontrolü ' + sureTxt(gec, true) + ' çalışmadı; uyarılar gecikebilir.', btn: 'Nasıl düzeltilir', act: openSheet };
+    if (d.arka === false) return null;
+    if (d.kisitli === true) return { text: 'Pil kullanımı "Kısıtlı" seçilmiş: uygulama kapalıyken hiç kontrol yapılamaz, bildirim gelmez.', btn: 'Düzelt', act: function () { NATIVE.openAppSettings(); } };
+    if (d.veri === 3) return { text: 'Veri tasarrufu açık: uygulama kapalıyken mobil veriyle fiyat alınamıyor, bildirim gelmez.', btn: 'Düzelt', act: function () { NATIVE.openDataSettings ? NATIVE.openDataSettings() : NATIVE.openAppSettings(); } };
+    if (d.calisma) {
+      var o = calismaOzet(d), saat = Math.max(1, Math.round(o.sure / 36e5));
+      if (o.sure >= 2 * 36e5 && o.n < o.beklenen * 0.25)
+        return { text: 'Telefon, uygulama kapalıyken kontrolleri durduruyor: son ' + saat + ' saatte ' + o.n + ' kontrol yapıldı (beklenen ≈' + o.beklenen + '). Bildirimler bu yüzden uygulamayı açınca geliyor.', btn: 'Düzelt', act: ayarlaraGit };
+      if (o.n >= 4 && o.veriYok >= o.n / 2)
+        return { text: 'Arka plan kontrolleri internete erişemiyor (son ' + saat + ' saatte ' + o.veriYok + '/' + o.n + ').', btn: 'Düzelt', act: ayarlaraGit };
+    } else {
+      var gec = d.simdi - (d.son || d.guncelleme || d.kurulum || d.simdi);
+      if (gec > 3 * 36e5) return { text: 'Arka plan kontrolü ' + sureTxt(gec, true) + ' çalışmadı; uyarılar gecikebilir.', btn: 'Nasıl düzeltilir', act: ayarlaraGit };
+    }
+    var kapatildi = lsGetJ('gmi-pil-sor', 0);
+    if (!d.pil && Date.now() - kapatildi > 7 * 864e5)
+      return { text: 'Uygulama kapalıyken bildirimlerin zamanında gelmesi için arka planda çalışma izni verin.', btn: 'İzin ver', act: function () { NATIVE.openBatterySettings(); setTimeout(renderBanner, 4000); }, kapat: 'gmi-pil-sor' };
     return null;
   }
+  // Üreticinin otomatik başlatma / arka plan izni: durumu okunamadığı için düğmeyle ayar ekranı açılır
+  var OTO = [
+    [/xiaomi|redmi|poco/i, 'Xiaomi: "Otomatik başlatma" açık olmalı; ayrıca son uygulamalar ekranında GMI Piyasa\'yı aşağı çekip kilitleyin.'],
+    [/huawei|honor/i, 'Huawei / Honor: "Uygulama başlatma"da GMI Piyasa elle yönetilmeli, üç seçenek de açık olmalı.'],
+    [/oppo|realme|oneplus/i, 'Oppo / Realme / OnePlus: "Otomatik başlatma" ve "Arka plan etkinliği" açık olmalı.'],
+    [/vivo|iqoo/i, 'Vivo: "Arka planda başlatma" ve "Arka planda yüksek güç tüketimi" izinli olmalı.'],
+    [/samsung/i, 'Samsung: Pil → Arka plan kullanım sınırları: GMI Piyasa "Uyuyan" ya da "Derin uyuyan" uygulamalarda olmamalı.'],
+    [/asus/i, 'Asus: "Otomatik başlatma yöneticisi"nde GMI Piyasa izinli olmalı.']
+  ];
   var MARKA = [
     [/xiaomi|redmi|poco/i, 'Xiaomi / Redmi / POCO: Ayarlar → Uygulamalar → GMI Piyasa → Otomatik başlatma açık; Pil tasarrufu → Kısıtlama yok.'],
     [/samsung/i, 'Samsung: Ayarlar → Pil → Arka plan kullanım sınırları → GMI Piyasa "Uyuyan uygulamalar"da olmasın; "Hiç uyumayan uygulamalar"a ekleyin.'],
@@ -195,19 +239,41 @@
     item(d.izin, d.izin ? 'Bildirim izni açık.' : 'Bildirim izni kapalı.', d.izin ? null : 'İzin ver', function () { NATIVE.requestNotifications(); setTimeout(renderNtList, 2500); });
     if (d.kanal === 0) item(false, '"Piyasa uyarıları" bildirim türü kapatılmış.', 'Aç', function () { NATIVE.openNotificationSettings(); });
     item(d.arka, d.arka ? 'Arka plan kontrolü açık.' : 'Arka plan kontrolü kapalı.', d.arka ? null : 'Aç', function () { NATIVE.setBackground(true); $('bg-toggle').checked = true; renderNtList(); });
-    item(d.pil ? true : null, d.pil ? 'Pil kısıtlaması yok.' : 'Pil tasarrufu arka plan kontrolünü geciktirebilir.', d.pil ? null : 'Kısıtlamayı kaldır', function () { NATIVE.openBatterySettings(); });
-    var basla = d.guncelleme || d.kurulum || d.simdi;
-    if (d.son) {
+    item(d.pil ? true : null, d.pil ? 'Pil kısıtlaması yok.' : 'Pil tasarrufu arka plan kontrolünü geciktirebilir.', d.pil ? null : 'Kısıtlamayı kaldır', function () { NATIVE.openBatterySettings(); setTimeout(renderNtList, 4000); });
+    if (d.kisitli === true) item(false, 'Pil kullanımı "Kısıtlı" seçilmiş: uygulama kapalıyken hiç çalışamaz. Uygulama bilgisi → Pil → "Kısıtlamasız" seçin.', 'Ayarları aç', function () { NATIVE.openAppSettings(); });
+    if (d.veri === 3) item(false, 'Veri tasarrufu açık: uygulama kapalıyken mobil veri kullanamıyor.', 'İzin ver', function () { NATIVE.openDataSettings ? NATIVE.openDataSettings() : NATIVE.openAppSettings(); });
+    if (d.kova >= 40) item(null, 'Android bu uygulamayı "az kullanılan" sınıfına almış; arka plan kontrolleri saatlerce ertelenebilir. Pil kısıtlamasını kaldırmak bunu çözer.');
+    // Arka plan kontrollerinin gerçekten çalışıp çalışmadığı (kayıtlardan)
+    var basla = d.guncelleme || d.kurulum || d.simdi, sorun = false, ozetVar = false;
+    // yedek alarm gece (00–07 TSİ) 60 dakikada bir ve Doze'da daha geç çalabilir
+    var tetikGece = d.tetik && new Date(d.tetik + 3 * 36e5).getUTCHours() < 7;
+    var tetikDurdu = d.tetik && d.arka && d.simdi - d.tetik > (tetikGece ? 120 : 45) * 6e4;
+    if (d.calisma && d.simdi - basla >= 45 * 6e4) {
+      var o = calismaOzet(d), saat = Math.max(1, Math.round(o.sure / 36e5)), oran = o.n / o.beklenen, netYok = o.n > 0 && o.veriYok >= o.n / 2;
+      var gecSon = d.son ? d.simdi - d.son : null;
+      ozetVar = true; sorun = oran < 0.6 || netYok;
+      item(oran < 0.25 || netYok ? false : (oran < 0.6 ? null : true),
+        'Son ' + saat + ' saatte ' + o.n + ' arka plan kontrolü yapıldı (beklenen ≈' + o.beklenen + (o.alarm ? '; ' + o.alarm + ' tanesini yedek zamanlayıcı başlattı' : '') + ')' +
+        (gecSon != null ? '; sonuncusu ' + sureTxt(Math.max(gecSon, 6e4)) + ' önce' : '') + '. En uzun ara ' + sureTxt(Math.max(o.bosluk, 6e4)) + '.' +
+        (oran < 0.25 ? ' Telefon arka plan işini durduruyor; bildirimler bu yüzden uygulamayı açınca geliyor.' : (oran < 0.6 ? ' Kontroller gecikiyor.' : '')) +
+        (o.veriYok ? ' ' + o.veriYok + ' kontrolde internete erişilemedi' + (netYok ? ' (veri tasarrufu, arka plan veri kısıtlaması ya da zayıf bağlantı).' : '.') : ''));
+    } else if (d.son) {
       var gec = d.simdi - d.son;
+      sorun = gec >= 45 * 6e4;
       item(gec < 45 * 6e4 ? true : (gec < 3 * 36e5 ? null : false), 'Son arka plan kontrolü ' + sureTxt(Math.max(gec, 6e4)) + ' önce.' + (gec >= 3 * 36e5 ? ' Telefon arka plan işini durduruyor olabilir.' : ''));
     } else if (d.simdi - basla < 40 * 6e4) {
-      item(null, 'Arka plan kontrolü henüz çalışmadı; ilk kontrol kurulumdan sonraki 15–30 dakika içinde yapılır.');
+      item(null, 'Arka plan kontrolü henüz çalışmadı; ilk kontrol kurulumdan ya da güncellemeden sonraki 15–30 dakika içinde yapılır.');
     } else {
+      sorun = true;
       item(false, 'Arka plan kontrolü bu sürüm kurulduğundan beri hiç çalışmadı. Telefon arka plan işini durduruyor olabilir.');
     }
+    if (tetikDurdu) { sorun = true; item(false, 'Yedek zamanlayıcı ' + sureTxt(d.simdi - d.tetik) + ' önce çalmalıydı ama çalmadı: telefon uygulamayı tamamen kapatıyor (otomatik başlatma kapalı ya da uygulama son uygulamalardan kaydırılınca kapanıyor).'); }
+    // Üretici ayarı: durumu okunamıyor; sorun varsa ya da henüz kayıt yoksa gösterilir
+    var oto = OTO.filter(function (m) { return m[0].test(d.marka || ''); })[0], otoGoster = oto && (sorun || !ozetVar || !d.pil);
+    if (otoGoster && NATIVE.openAutostart) item(null, oto[1], 'Ayarı aç', function () { NATIVE.openAutostart(); });
     var tip = MARKA.filter(function (m) { return m[0].test(d.marka || ''); })[0];
-    $('nt-marka').textContent = tip ? tip[1] + ' (Menü adları sürüme göre değişebilir.)' : '';
-    $('nt-marka').hidden = !tip;
+    $('nt-marka').textContent = tip && otoGoster ? 'Düğmeler doğru ekranı açmazsa elle: ' + tip[1] + ' (Menü adları sürüme göre değişebilir.)' : '';
+    $('nt-marka').hidden = !(tip && otoGoster);
     try { $('ozet-toggle').checked = !!d.ozet; } catch (e) { /* yok say */ }
   }
 

@@ -1,9 +1,12 @@
 package tr.emreby.gmi;
 
+import android.app.Notification;
 import android.content.Context;
 import android.content.SharedPreferences;
 
 import androidx.annotation.NonNull;
+import androidx.core.app.NotificationCompat;
+import androidx.work.ForegroundInfo;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
@@ -36,6 +39,49 @@ public class CheckWorker extends Worker {
 
     public CheckWorker(@NonNull Context c, @NonNull WorkerParameters p) {
         super(c, p);
+    }
+
+    /** Android 12 öncesinde öncelikli iş kısa süreli ön plan hizmeti olarak çalışır; o sırada görünen sessiz bildirim. */
+    @NonNull
+    @Override
+    public ForegroundInfo getForegroundInfo() {
+        Context ctx = getApplicationContext();
+        Notify.ensureChannels(ctx);
+        Notification n = new NotificationCompat.Builder(ctx, Notify.CH_ISLEM)
+                .setSmallIcon(R.drawable.ic_stat)
+                .setContentTitle("GMI Piyasa")
+                .setContentText("Piyasa kontrol ediliyor…")
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setOngoing(true)
+                .build();
+        return new ForegroundInfo(33000, n);
+    }
+
+    /** Bu çalışmada internetten veri alınabildi mi: 1 evet, 0 denendi ama alınamadı, -1 hiç denenmedi. */
+    static int veriDurumu(Px px) {
+        boolean denendi = px.tgDone || !px.yahoo.isEmpty() || !px.spot.isEmpty() || px.tcmbDone;
+        if (!denendi) return -1;
+        if (px.tg != null || px.tcmbBody != null) return 1;
+        for (Double v : px.spot.values()) if (v != null && !Double.isNaN(v)) return 1;
+        for (Q q : px.yahoo.values()) if (q != null && q.ok()) return 1;
+        return 0;
+    }
+
+    /** Arka plan çalışma geçmişi: [zaman, kaynak (p periyodik, a alarm, e elle), veri (1/0/-1)], son 200. */
+    static void gecmisEkle(SharedPreferences p, long ms, String kaynak, int veri) {
+        try {
+            JSONArray a;
+            try {
+                a = new JSONArray(p.getString("bg_calisma", "[]"));
+            } catch (Exception e) {
+                a = new JSONArray();
+            }
+            a.put(new JSONArray().put(ms).put(kaynak).put(veri));
+            JSONArray b = new JSONArray();
+            for (int i = Math.max(0, a.length() - 200); i < a.length(); i++) b.put(a.get(i));
+            p.edit().putString("bg_calisma", b.toString()).apply();
+        } catch (Exception ignored) {
+        }
     }
 
     static final class Q {
@@ -371,10 +417,18 @@ public class CheckWorker extends Worker {
         Context ctx = getApplicationContext();
         SharedPreferences p = ctx.getSharedPreferences("gmi", Context.MODE_PRIVATE);
         boolean manual = getInputData().getBoolean("manual", false);
+        String kaynak = manual ? "e" : ("alarm".equals(getInputData().getString("kaynak")) ? "a" : "p");
         if (!p.getBoolean("bg_on", true) && !manual) return Result.success();
         long nowMs = System.currentTimeMillis();
         // Son çalışma zamanı: ayarlar ekranı arka plan kontrolünün telefonda gerçekten çalışıp çalışmadığını buradan gösterir.
-        p.edit().putLong("bg_last_ms", nowMs).apply();
+        // Periyodik iş ile yedek alarm art arda gelirse ikincisi atlanır (aynı bildirim iki kez gitmesin).
+        synchronized (CheckWorker.class) {
+            long son = p.getLong("bg_last_ms", 0);
+            if (!manual && nowMs >= son && nowMs - son < 8 * 60_000L) return Result.success();
+            p.edit().putLong("bg_last_ms", nowMs).apply();
+        }
+        // yedek alarm zinciri koptuysa (zorla durdurma, açılış) yeniden kur
+        if (!manual && p.getLong("tetik_sonraki", 0) < nowMs - 5 * 60_000L) Tetik.kur(ctx);
         String today = fmt("yyyy-MM-dd", nowMs), hhmm = fmt("HH:mm", nowMs);
         JSONObject log = new JSONObject();
         JSONArray errs = new JSONArray();
@@ -390,6 +444,7 @@ public class CheckWorker extends Worker {
                 log.put("note", "Hafta sonu: piyasalar kapalı; yalnız fiyat alarmları kontrol edildi.");
                 log.put("alarms", fired);
                 p.edit().putString("bglog", log.toString()).apply();
+                gecmisEkle(p, nowMs, kaynak, veriDurumu(px));
                 if (manual)
                     Notify.show(ctx, Notify.CH_OZET, "GMI · Kontrol tamamlandı", "Hafta sonu: piyasalar kapalı; fiyat alarmları kontrol edildi"
                             + (fired > 0 ? ", " + fired + " alarm çaldı." : ", çalan alarm yok.") + " Bildirimler çalışıyor.", 32000);
@@ -505,6 +560,7 @@ public class CheckWorker extends Worker {
             log.put("errors", errs);
             ed.putString("bglog", log.toString());
             ed.apply();
+            gecmisEkle(p, nowMs, kaynak, veriDurumu(px));
 
             String line = priceLine(pxs);
             dailySummary(ctx, p, today, cal.get(Calendar.HOUR_OF_DAY), line);
@@ -520,6 +576,7 @@ public class CheckWorker extends Worker {
             } catch (Exception ignored) {
             }
             p.edit().putString("bglog", log.toString()).apply();
+            gecmisEkle(p, nowMs, kaynak, veriDurumu(px));
             if (manual) Notify.show(ctx, Notify.CH_OZET, "GMI · Kontrol tamamlanamadı", String.valueOf(e.getMessage()), 32000);
         }
         return Result.success();

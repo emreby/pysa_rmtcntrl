@@ -15,6 +15,8 @@ final class Notify {
     static final String CH = "gmi_uyari";
     /** Günlük özet ve elle başlatılan kontrolün sonucu (normal önem). */
     static final String CH_OZET = "gmi_ozet";
+    /** Eski Android sürümlerinde (12 öncesi) öncelikli kontrol sırasında birkaç saniye görünen sessiz bildirim. */
+    static final String CH_ISLEM = "gmi_islem";
 
     private Notify() {
     }
@@ -31,6 +33,12 @@ final class Notify {
         if (nm.getNotificationChannel(CH_OZET) == null) {
             NotificationChannel ch = new NotificationChannel(CH_OZET, "Özet ve kontrol sonucu", NotificationManager.IMPORTANCE_DEFAULT);
             ch.setDescription("Günlük kapanış özeti ve elle başlatılan kontrolün sonucu");
+            nm.createNotificationChannel(ch);
+        }
+        if (nm.getNotificationChannel(CH_ISLEM) == null) {
+            NotificationChannel ch = new NotificationChannel(CH_ISLEM, "Arka plan kontrolü sürüyor", NotificationManager.IMPORTANCE_MIN);
+            ch.setDescription("Eski Android sürümlerinde kontrol sırasında birkaç saniye görünür");
+            ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
         }
     }
